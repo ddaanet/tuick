@@ -10,6 +10,12 @@ MYPY_BLOCKS = [
 ]
 
 # uv run --no-sync mypy --show-column-numbers --pretty --show-error-context
+#
+# --pretty turns on soft word wrap, and location marker. That makes messages
+# multi-line. Error blocks start with a message with at least a line number.
+#
+# --show-error-context adds a leading note. A "note" message without line
+# number is context, it indicates the start of a block.
 MYPY_FANCY_BLOCKS = [
     """\
 src/jobsearch/cadremploi_scraper.py: note: In function "extract_json_ld":
@@ -34,6 +40,12 @@ MYPY_ABSOLUTE_BLOCKS = [
     "/path/to/tests/test_ollama_extraction.py:80: error: Missing type para...",
 ]
 
+# mypy --pretty --show-error-context --show-error-code-links
+# --show-column-numbers
+#
+# --show-error-code-links adds a "note" message with the same location as the
+# previous error after the location marker. Multiple messages with the same
+# location must be grouped.
 MYPY_VERY_FANCY_BLOCKS = [
     """\
 src/jobsearch/search.py: note: In function "select_one_text":
