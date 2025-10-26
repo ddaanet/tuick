@@ -56,7 +56,7 @@ agent-test *ARGS:
     #!/usr/bin/env bash -euo pipefail
     fail_with () { local s=$?; "$@"; return $s; }
     quietly () { output=$("$@" >&1) || fail_with echo "$output"; }
-    quietly uv run --dev pytest --no-header --quiet --tb=short {{ ARGS }}
+    quietly uv run --dev pytest --no-header --quiet --tb=short -p no:icdiff {{ ARGS }}
     if ! {{ is_dependency() }}; then echo OK; fi
 
 

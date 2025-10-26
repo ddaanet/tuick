@@ -264,7 +264,6 @@ FAILED tests/test_search.py::test_extract_search_card_no_salary - jobsearch....
 ]
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize(
     "blocks", [PYTEST_AUTO_BLOCKS, PYTEST_SHORT_BLOCKS, PYTEST_LINE_BLOCKS]
 )

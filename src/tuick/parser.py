@@ -20,6 +20,7 @@ class State(Enum):
     NORMAL = auto()
     NOTE_CONTEXT = auto()
     SUMMARY = auto()
+    PYTEST_BLOCK = auto()
 
 
 class LineType(Enum):
@@ -29,6 +30,7 @@ class LineType(Enum):
     NOTE = auto()
     LOCATION = auto()
     SUMMARY = auto()
+    SEPARATOR = auto()
     OTHER = auto()
 
 
@@ -77,12 +79,12 @@ MYPY_NOTE_REGEX = re.compile(
 )
 SUMMARY_REGEX = re.compile(
     r"""^Found[ ]\d+[ ]error  # Summary line like "Found 12 errors"
-        #|^={3,} .+? ={3,}$    # === summary ===
+        |^={3,}.+?={3,}$      # === summary ===
     """,
     re.VERBOSE,
 )
 PYTEST_SEP_REGEX = re.compile(
-    r"""^(={3,}|_{3,}|_[ ](_[ ])+_)  # === or ___ or _ _ _ separators
+    r"""^(_{3,}|_[ ](_[ ])+_)  # ___ or _ _ _ separators
     """,
     re.VERBOSE,
 )
@@ -107,6 +109,8 @@ def classify_line(text: str) -> LineType:
         return LineType.LOCATION
     if re.match(SUMMARY_REGEX, text):
         return LineType.SUMMARY
+    if re.match(PYTEST_SEP_REGEX, text):
+        return LineType.SEPARATOR
     return LineType.OTHER
 
 
@@ -143,7 +147,8 @@ class BlockSplitter:
 
         if line_type == LineType.BLANK:
             yield self.pending_nl
-            self._reset_state()
+            if self.state not in (State.SUMMARY, State.PYTEST_BLOCK):
+                self._reset_state()
             return
 
         # After blank line (state=START), next line starts new block
@@ -168,11 +173,11 @@ class BlockSplitter:
 
     def _should_start_new_block(self, line_type: LineType, text: str) -> bool:
         """Check if this line should start a new block."""
-        if line_type == LineType.NOTE:
+        if line_type in (LineType.NOTE, LineType.SEPARATOR):
             return True
 
-        if line_type == LineType.SUMMARY and self.state != State.SUMMARY:
-            return True
+        if line_type == LineType.SUMMARY:
+            return self.state != State.SUMMARY
 
         if line_type == LineType.LOCATION:
             current_location = extract_location_str(text)
@@ -180,6 +185,8 @@ class BlockSplitter:
             if self.state == State.NOTE_CONTEXT:
                 current_path = current_location.split(":")[0]
                 return self.note_path != current_path
+            if self.state == State.SUMMARY:
+                return True
             return (
                 self.prev_location is not None
                 and current_location != self.prev_location
@@ -201,10 +208,14 @@ class BlockSplitter:
                 if self.note_path != current_path:
                     self.state = State.NORMAL
                     self.note_path = None
-            else:
+            elif self.state != State.PYTEST_BLOCK:
                 self.state = State.NORMAL
                 self.note_path = None
             self.prev_location = current_location
+        elif line_type == LineType.SEPARATOR:
+            self.state = State.PYTEST_BLOCK
+            self.prev_location = None
+            self.note_path = None
         elif line_type == LineType.SUMMARY:
             self.state = State.SUMMARY
             self.prev_location = None

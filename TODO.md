@@ -1,6 +1,5 @@
 # Tuick Task List
 
-- Fix pytest format block splitting (separator lines not creating new blocks)
 - Make select command not fail if no location is found, just be no-op.
 - Make select command function with all formats tested with split_blocks.
 - Write failing test for iterator that yields whenever a filesystem change
@@ -21,8 +20,7 @@
   reload command is sent when a file is created. Green, create unix socket in
   temporary dir and set FZF_PORT before subprocessing fzf, send reload command
   when filesystem monitor detects a change.
-- Add support for other editors. Steal code from
-  https://raw.githubusercontent.com/dandavison/open-in-editor/refs/heads/master/open-in-editor
+- Add support for other editors. Steal code from [open-in-editor]
   and ../edit_command_buffer.fish.
 - For Idea, Pycharm, code, use "open URL" subprocess, because it's faster.
   - idea://open?file={absolute-path}&line={line-number}
@@ -33,3 +31,5 @@
   them as fzf delimiter, so the search only applies to the file name and
   message
   - Test insertion of controls chars in various error formats
+
+[open-in-editor]: https://raw.githubusercontent.com/dandavison/open-in-editor/refs/heads/master/open-in-editor
