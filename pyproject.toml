@@ -26,6 +26,7 @@ dev = [
     "isort>=7.0.0",
     "mypy[mypyc]>=1.18.2",
     "pytest>=8.4.2",
+    "pytest-icdiff>=0.9",
     "ruff>=0.14.2",
 ]
 
@@ -119,3 +120,7 @@ require-runtime-features = ["mypyc"]
 # That SHOULD be overridable by env vars, but is not.
 # https://github.com/ofek/hatch-mypyc/issues/43
 enable-by-default = false
+
+[tool.pytest.ini_options]
+truncation_limit_lines = "0"
+truncation_limit_chars = "0"
