@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from tuick import FileLocation, app, get_location, split_blocks
+from tuick.cli import app
+from tuick.parser import FileLocation, get_location, split_blocks
 
 runner = CliRunner()
 
@@ -314,8 +315,8 @@ def test_cli_default_launches_fzf() -> None:
         return CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
     with (
-        patch("tuick.subprocess.run", side_effect=capture_env),
-        patch("tuick.sys.argv", ["tuick", "ruff"]),
+        patch("tuick.cli.subprocess.run", side_effect=capture_env),
+        patch("tuick.cli.sys.argv", ["tuick", "ruff"]),
     ):
         runner.invoke(app, ["--", "ruff", "check", "src/"])
         assert "FZF_DEFAULT_COMMAND" in captured_env
@@ -337,7 +338,7 @@ def test_cli_reload_option() -> None:
         mock_process.__exit__ = MagicMock(return_value=False)
         return mock_process
 
-    with patch("tuick.subprocess.Popen", side_effect=mock_popen):
+    with patch("tuick.cli.subprocess.Popen", side_effect=mock_popen):
         result = runner.invoke(app, ["--reload", "--", "mypy", "src/"])
         assert captured_env["FORCE_COLOR"] == "1"
         assert result.stdout == "src/test.py:1: error: Test"
@@ -345,7 +346,7 @@ def test_cli_reload_option() -> None:
 
 def test_cli_select_option() -> None:
     """--select option opens editor at location."""
-    with patch("tuick.subprocess.run") as mock_run:
+    with patch("tuick.cli.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         runner.invoke(app, ["--select", "src/test.py:10:5: error: Test"])
         assert mock_run.call_args[0] == (

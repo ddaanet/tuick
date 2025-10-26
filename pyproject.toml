@@ -18,7 +18,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-tuick = "tuick:app"
+tuick = "tuick.cli:app"
 
 [dependency-groups]
 dev = [
@@ -103,9 +103,6 @@ disallow_incomplete_defs = false
 
 [tool.ty.terminal]
 error-on-warning = true
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/tuick.py"]
 
 [tool.hatch.build.targets.wheel.hooks.mypyc]
 dependencies = ["hatch-mypyc"]
