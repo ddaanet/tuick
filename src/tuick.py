@@ -164,30 +164,75 @@ def split_blocks(lines: Iterable[str]) -> Iterator[str]:
     """
     first_block = True
     pending_nl = ""
+    prev_location = None
+    note_path = None  # Path from most recent note line
+
     for line in lines:
         text, trailing_nl = (
             line.removesuffix("\n"),
             "\n" if line.endswith("\n") else "",
         )
         if not text:
-            # Blank line
-            yield "\n\0"
-            first_block = False
+            # Blank line resets state, next non-blank starts new block
             pending_nl = ""
+            prev_location = None
+            note_path = None
             continue
-        if re.match(LINE_REGEX, text):
+
+        # Check if this line starts a new block
+        starts_new_block = False
+
+        if re.match(MYPY_NOTE_REGEX, text):
+            # Note line always starts new block
+            starts_new_block = True
+            note_path = text.split(":")[0]
+            prev_location = None
+        elif match := re.match(LINE_REGEX, text):
+            # Extract location (path:line or path:line:col)
+            current_location = match.group(1)
+            current_path = current_location.split(":")[0]
+
+            # Continue block if in note context and paths match
+            if note_path is not None and current_path == note_path:
+                # Continue the note block
+                prev_location = current_location
+            elif (
+                prev_location is not None and current_location != prev_location
+            ):
+                # Different location, start new block
+                starts_new_block = True
+                prev_location = current_location
+                note_path = None
+            else:
+                # First location or same location
+                prev_location = current_location
+                note_path = None
+        elif re.match(SUMMARY_REGEX, text) or re.match(PYTEST_SEP_REGEX, text):
+            starts_new_block = True
+            prev_location = None
+            note_path = None
+        else:
+            # Regular line, doesn't change state
+            pass
+
+        if starts_new_block:
             if not first_block:
                 yield "\0"
+            pending_nl = ""  # Don't carry newline into new block
+
+        # Always clear first_block after processing first line
+        if first_block:
             first_block = False
-            trailing_nl = ""
+
         yield pending_nl
         yield text
         pending_nl = trailing_nl
-    yield pending_nl
+    # Don't yield final newline - blocks shouldn't end with newline
 
 
 LINE_REGEX = re.compile(
-    r"""^([^:]+         # File name
+    r"""^([^\s:]        # File name, with no colon, not indented
+          [^:]*         # File name may contain spaces after first char
           :\d+          # Line number
           (?::\d+)?     # Column number
          )
@@ -195,6 +240,23 @@ LINE_REGEX = re.compile(
          :[ ].+         # Message
     """,
     re.MULTILINE + re.VERBOSE,
+)
+MYPY_NOTE_REGEX = re.compile(
+    r"""^[^\s:]       # File name with no colon, not indented
+        [^:]*         # File name my contain spaces
+        :[ ]note:[ ]  # no line number, note label
+    """,
+    re.VERBOSE,
+)
+SUMMARY_REGEX = re.compile(
+    r"""^Found[ ]\d+[ ]error  # Summary line like "Found 12 errors"
+    """,
+    re.VERBOSE,
+)
+PYTEST_SEP_REGEX = re.compile(
+    r"""^(={3,}|_{3,}|_[ ](_[ ])+_)  # === or ___ or _ _ _ separators
+    """,
+    re.VERBOSE,
 )
 RUFF_REGEX = re.compile(
     r"""^[ ]*-->[ ]  # Arrow marker, preceded by number column width padding

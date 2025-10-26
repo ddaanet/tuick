@@ -92,9 +92,9 @@ Found 8 errors in 6 files (checked 20 source files)\
     "blocks",
     [
         MYPY_BLOCKS,
-        pytest.param(MYPY_FANCY_BLOCKS, marks=pytest.mark.xfail),
+        MYPY_FANCY_BLOCKS,
         MYPY_ABSOLUTE_BLOCKS,
-        pytest.param(MYPY_VERY_FANCY_BLOCKS, marks=pytest.mark.xfail),
+        MYPY_VERY_FANCY_BLOCKS,
     ],
 )
 def test_split_blocks_mypy(blocks: list[str]) -> None:
