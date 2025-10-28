@@ -2,14 +2,60 @@
 
 import os
 import shlex
+import subprocess
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
 if typing.TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from rich.console import Console
+
     from tuick.parser import FileLocation
+
+
+class EditorCommand(typing.Protocol):
+    """Protocol for editor commands."""
+
+    def run(self) -> None:
+        """Execute the command, may raise subprocess.CalledProcessError."""
+        ...
+
+    def print_to(self, console: Console) -> None:
+        """Display command to console."""
+        ...
+
+
+@dataclass
+class EditorURL:
+    """Editor command using URL scheme via 'open' command."""
+
+    url: str
+
+    def run(self) -> None:
+        """Execute the open command."""
+        subprocess.run(["open", self.url], check=True)  # noqa: S607
+
+    def print_to(self, console: Console) -> None:
+        """Display the open command."""
+        console.print(f"open {self.url}")
+
+
+@dataclass
+class EditorSubprocess:
+    """Editor command using direct subprocess execution."""
+
+    args: Sequence[str]
+
+    def run(self) -> None:
+        """Execute the command."""
+        subprocess.run(self.args, check=True)
+
+    def print_to(self, console: Console) -> None:
+        """Display the command with shell quoting."""
+        console.print(shlex.join(self.args))
 
 
 class UnsupportedEditorError(ValueError):
@@ -37,7 +83,7 @@ class BaseEditor:
         self.editor_path = editor_path
         self.editor_args = editor_args
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build command for opening file at location."""
         raise NotImplementedError
 
@@ -55,14 +101,14 @@ class IdeaEditor(BaseEditor):
 
     command_names = ("idea",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build IDEA URL scheme command."""
         abs_path = Path(location.path).resolve(strict=True)
         quoted_path = quote(str(abs_path), safe="")
         url = f"idea://open?file={quoted_path}&line={location.row}"
         if location.column is not None:
             url += f"&column={location.column}"
-        return ["open", url]
+        return EditorURL(url)
 
 
 class PyCharmEditor(BaseEditor):
@@ -70,14 +116,14 @@ class PyCharmEditor(BaseEditor):
 
     command_names = ("charm", "pycharm")
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build PyCharm URL scheme command."""
         abs_path = Path(location.path).resolve(strict=True)
         quoted_path = quote(str(abs_path), safe="")
         url = f"pycharm://open?file={quoted_path}&line={location.row}"
         if location.column is not None:
             url += f"&column={location.column}"
-        return ["open", url]
+        return EditorURL(url)
 
 
 class VSCodeEditor(BaseEditor):
@@ -85,19 +131,20 @@ class VSCodeEditor(BaseEditor):
 
     command_names = ("code",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build VSCode command, using URL scheme unless --wait present."""
         if "--wait" in self.editor_args:
             dest = f"{location.path}:{location.row}"
             if location.column is not None:
                 dest += f":{location.column}"
-            return ["code", *self.editor_args, "--goto", dest]
+            args = ["code", *self.editor_args, "--goto", dest]
+            return EditorSubprocess(args)
 
         abs_path = Path(location.path).resolve(strict=True)
         url = f"vscode://file/{abs_path}:{location.row}"
         if location.column is not None:
             url += f":{location.column}"
-        return ["open", url]
+        return EditorURL(url)
 
 
 class VSCodeOSSEditor(BaseEditor):
@@ -105,19 +152,20 @@ class VSCodeOSSEditor(BaseEditor):
 
     command_names = ("code-oss",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build VSCode OSS command, using URL scheme unless --wait present."""
         if "--wait" in self.editor_args:
             dest = f"{location.path}:{location.row}"
             if location.column is not None:
                 dest += f":{location.column}"
-            return ["code-oss", *self.editor_args, "--goto", dest]
+            args = ["code-oss", *self.editor_args, "--goto", dest]
+            return EditorSubprocess(args)
 
         abs_path = Path(location.path).resolve(strict=True)
         url = f"code-oss://file/{abs_path}:{location.row}"
         if location.column is not None:
             url += f":{location.column}"
-        return ["open", url]
+        return EditorURL(url)
 
 
 class VimEditor(BaseEditor):
@@ -125,13 +173,13 @@ class VimEditor(BaseEditor):
 
     command_names = ("vim", "nvim", "vi")
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build vim command."""
         cmd = [self.editor_path, *self.editor_args, f"+{location.row}"]
         if location.column is not None:
             cmd.append(f"+normal! {location.column}l")
         cmd.append(location.path)
-        return cmd
+        return EditorSubprocess(cmd)
 
 
 class EmacsEditor(BaseEditor):
@@ -139,13 +187,14 @@ class EmacsEditor(BaseEditor):
 
     command_names = ("emacs", "emacsclient", "gedit")
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build emacs command."""
         if location.column is not None:
             pos = f"+{location.row}:{location.column}"
         else:
             pos = f"+{location.row}"
-        return [self.editor_path, *self.editor_args, pos, location.path]
+        args = [self.editor_path, *self.editor_args, pos, location.path]
+        return EditorSubprocess(args)
 
 
 class KakouneEditor(BaseEditor):
@@ -153,13 +202,14 @@ class KakouneEditor(BaseEditor):
 
     command_names = ("kak",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build kakoune command."""
         if location.column is not None:
             pos = f"+{location.row}:{location.column}"
         else:
             pos = f"+{location.row}"
-        return [self.editor_path, *self.editor_args, pos, location.path]
+        args = [self.editor_path, *self.editor_args, pos, location.path]
+        return EditorSubprocess(args)
 
 
 class NanoEditor(BaseEditor):
@@ -167,13 +217,14 @@ class NanoEditor(BaseEditor):
 
     command_names = ("nano",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build nano command."""
         if location.column is not None:
             pos = f"+{location.row},{location.column}"
         else:
             pos = f"+{location.row}"
-        return [self.editor_path, *self.editor_args, pos, location.path]
+        args = [self.editor_path, *self.editor_args, pos, location.path]
+        return EditorSubprocess(args)
 
 
 class JoeEditor(BaseEditor):
@@ -181,14 +232,15 @@ class JoeEditor(BaseEditor):
 
     command_names = ("joe", "ee")
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build joe/ee command."""
-        return [
+        args = [
             self.editor_path,
             *self.editor_args,
             f"+{location.row}",
             location.path,
         ]
+        return EditorSubprocess(args)
 
 
 class SublimeEditor(BaseEditor):
@@ -196,12 +248,13 @@ class SublimeEditor(BaseEditor):
 
     command_names = ("subl",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build sublime text command."""
         dest = f"{location.path}:{location.row}"
         if location.column is not None:
             dest += f":{location.column}"
-        return [self.editor_path, *self.editor_args, dest, "--wait"]
+        args = [self.editor_path, *self.editor_args, dest, "--wait"]
+        return EditorSubprocess(args)
 
 
 class MicroEditor(BaseEditor):
@@ -209,13 +262,14 @@ class MicroEditor(BaseEditor):
 
     command_names = ("micro",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build micro command."""
         if location.column is not None:
             pos = f"+{location.row}:{location.column}"
         else:
             pos = f"+{location.row}"
-        return [self.editor_path, *self.editor_args, location.path, pos]
+        args = [self.editor_path, *self.editor_args, location.path, pos]
+        return EditorSubprocess(args)
 
 
 class HelixEditor(BaseEditor):
@@ -223,12 +277,13 @@ class HelixEditor(BaseEditor):
 
     command_names = ("helix", "hx")
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build helix command."""
         dest = f"{location.path}:{location.row}"
         if location.column is not None:
             dest += f":{location.column}"
-        return [self.editor_path, *self.editor_args, dest]
+        args = [self.editor_path, *self.editor_args, dest]
+        return EditorSubprocess(args)
 
 
 class ZedEditor(BaseEditor):
@@ -236,12 +291,13 @@ class ZedEditor(BaseEditor):
 
     command_names = ("zed",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build zed command."""
         dest = f"{location.path}:{location.row}"
         if location.column is not None:
             dest += f":{location.column}"
-        return [self.editor_path, *self.editor_args, dest]
+        args = [self.editor_path, *self.editor_args, dest]
+        return EditorSubprocess(args)
 
 
 class OEditor(BaseEditor):
@@ -249,7 +305,7 @@ class OEditor(BaseEditor):
 
     command_names = ("o",)
 
-    def get_command(self, location: FileLocation) -> Sequence[str]:
+    def get_command(self, location: FileLocation) -> EditorCommand:
         """Build o editor command."""
         cmd = [
             self.editor_path,
@@ -259,7 +315,7 @@ class OEditor(BaseEditor):
         ]
         if location.column is not None:
             cmd.append(f"+{location.column}")
-        return cmd
+        return EditorSubprocess(cmd)
 
 
 def get_editor_from_env() -> str | None:
@@ -271,7 +327,7 @@ def get_editor_from_env() -> str | None:
     return os.environ.get("EDITOR") or os.environ.get("VISUAL")
 
 
-def get_editor_command(editor: str, location: FileLocation) -> Sequence[str]:
+def get_editor_command(editor: str, location: FileLocation) -> EditorCommand:
     """Build editor command from editor string and file location.
 
     Args:
@@ -279,7 +335,7 @@ def get_editor_command(editor: str, location: FileLocation) -> Sequence[str]:
         location: File location with row and optional column
 
     Returns:
-        Command list ready for subprocess execution
+        EditorCommand ready for execution
 
     Raises:
         UnsupportedEditorError: If editor is not supported
@@ -294,9 +350,7 @@ def get_editor_command(editor: str, location: FileLocation) -> Sequence[str]:
     editor_args = parts[1:]
     editor_path = os.path.join(path_head, editor_name)  # noqa: PTH118
 
-    # Lookup editor class in registry
-    editor_class = BaseEditor.get_editor_class(editor_name)
-
     # Create editor instance and build command
+    editor_class = BaseEditor.get_editor_class(editor_name)
     editor_instance = editor_class(editor_path, editor_args)
     return editor_instance.get_command(location)

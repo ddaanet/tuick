@@ -171,24 +171,17 @@ def select_command(selection: str, *, verbose: bool = False) -> None:
         editor_command = get_editor_command(editor, location)
     except UnsupportedEditorError as e:
         err_console.print(f"[bold red]Error:[/] {e}")
-        raise typer.Exit(1) from None
+        raise typer.Exit(1) from e
 
-    # Format and print command
-    quoted_parts = [shlex.quote(x) for x in editor_command]
-    formatted_command = f"{quoted_parts[0]} {' '.join(quoted_parts[1:])}"
-    console.print(formatted_command)
-
-    # Execute command
-    result = subprocess.run(
-        editor_command, check=False, capture_output=True, text=True
-    )
-    if result.returncode or result.stderr:
+    # Display and execute command
+    editor_command.print_to(console)
+    try:
+        editor_command.run()
+    except subprocess.CalledProcessError as e:
         err_console.print(
-            "[bold red]Error running editor:",
-            " ".join(shlex.quote(x) for x in editor_command),
+            f"[bold red]Error running editor (exit {e.returncode})"
         )
-        if result.stderr:
-            err_console.print(result.stderr)
+        raise typer.Exit(1) from e
 
 
 if __name__ == "__main__":

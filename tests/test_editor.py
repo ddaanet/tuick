@@ -1,12 +1,19 @@
 """Tests for the editor module."""
 
 import os
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from rich.console import Console
 
-from tuick.editor import get_editor_command, get_editor_from_env
+from tuick.editor import (
+    EditorSubprocess,
+    EditorURL,
+    get_editor_command,
+    get_editor_from_env,
+)
 from tuick.parser import FileLocation
 
 
@@ -291,4 +298,78 @@ def test_get_editor_command(
     with patch.object(
         Path, "resolve", autospec=True, side_effect=_mock_resolve
     ):
-        assert get_editor_command(editor, location) == expected
+        cmd = get_editor_command(editor, location)
+        if isinstance(cmd, EditorURL):
+            assert ["open", cmd.url] == expected
+        elif isinstance(cmd, EditorSubprocess):
+            assert list(cmd.args) == expected
+
+
+class TestEditorURL:
+    """Tests for EditorURL class."""
+
+    def test_print_to_displays_open_command(self) -> None:
+        """print_to() displays 'open {url}'."""
+        url = "vscode://file//project/src/test.py:10:5"
+        cmd = EditorURL(url)
+        console = Console()
+        with console.capture() as capture:
+            cmd.print_to(console)
+        assert capture.get() == f"open {url}\n"
+
+    def test_run_calls_subprocess_without_capture(self) -> None:
+        """Run() calls subprocess.run without capture_output."""
+        url = "vscode://file//project/src/test.py:10:5"
+        cmd = EditorURL(url)
+        with patch("subprocess.run") as mock_run:
+            cmd.run()
+            mock_run.assert_called_once_with(["open", url], check=True)
+
+    def test_run_raises_on_subprocess_error(self) -> None:
+        """Run() raises CalledProcessError when subprocess fails."""
+        url = "vscode://file//project/src/test.py:10:5"
+        cmd = EditorURL(url)
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(1, ["open"])
+            with pytest.raises(subprocess.CalledProcessError):
+                cmd.run()
+
+
+class TestEditorSubprocess:
+    """Tests for EditorSubprocess class."""
+
+    def test_print_to_displays_formatted_command(self) -> None:
+        """print_to() displays shell-quoted command args."""
+        args = ["vim", "+10", "src/test.py"]
+        cmd = EditorSubprocess(args)
+        console = Console()
+        with console.capture() as capture:
+            cmd.print_to(console)
+        assert capture.get() == "vim +10 src/test.py\n"
+
+    def test_print_to_shell_quotes_spaces(self) -> None:
+        """print_to() correctly shell quotes args with spaces."""
+        args = ["/usr/bin/my editor", "--arg", "file with spaces.py"]
+        cmd = EditorSubprocess(args)
+        console = Console()
+        with console.capture() as capture:
+            cmd.print_to(console)
+        expected = "'/usr/bin/my editor' --arg 'file with spaces.py'\n"
+        assert capture.get() == expected
+
+    def test_run_calls_subprocess_without_capture(self) -> None:
+        """Run() calls subprocess.run without capture_output."""
+        args = ["vim", "+10", "src/test.py"]
+        cmd = EditorSubprocess(args)
+        with patch("subprocess.run") as mock_run:
+            cmd.run()
+            mock_run.assert_called_once_with(args, check=True)
+
+    def test_run_raises_on_subprocess_error(self) -> None:
+        """Run() raises CalledProcessError when subprocess fails."""
+        args = ["vim", "+10", "src/test.py"]
+        cmd = EditorSubprocess(args)
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(1, args)
+            with pytest.raises(subprocess.CalledProcessError):
+                cmd.run()
