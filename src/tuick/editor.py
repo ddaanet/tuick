@@ -1,6 +1,7 @@
 """Editor detection and command building."""
 
 import os
+import platform
 import shlex
 import subprocess
 import typing
@@ -36,7 +37,13 @@ class EditorURL:
 
     def run(self) -> None:
         """Execute the open command."""
-        subprocess.run(["open", self.url], check=True)  # noqa: S607
+        system = platform.system()
+        if system == "Darwin":
+            subprocess.Popen(["open", self.url])  # noqa: S607
+        elif system == "Windows":
+            os.startfile(self.url)  # type: ignore[attr-defined]  # noqa: S606
+        else:
+            subprocess.Popen(["xdg-open", self.url])  # noqa: S607
 
     def print_to(self, console: Console) -> None:
         """Display the open command."""

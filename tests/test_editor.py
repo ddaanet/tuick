@@ -3,7 +3,7 @@
 import os
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.console import Console
@@ -317,22 +317,37 @@ class TestEditorURL:
             cmd.print_to(console)
         assert capture.get() == f"open {url}\n"
 
-    def test_run_calls_subprocess_without_capture(self) -> None:
-        """Run() calls subprocess.run without capture_output."""
-        url = "vscode://file//project/src/test.py:10:5"
+    @pytest.mark.parametrize(
+        ("system", "expected_command"),
+        [
+            ("Darwin", ["open", "test://url"]),
+            ("Linux", ["xdg-open", "test://url"]),
+        ],
+    )
+    def test_run_uses_popen_for_darwin_and_linux(
+        self, system: str, expected_command: list[str]
+    ) -> None:
+        """Run() uses Popen with platform-specific command."""
+        url = "test://url"
         cmd = EditorURL(url)
-        with patch("subprocess.run") as mock_run:
+        with (
+            patch("subprocess.Popen") as mock_popen,
+            patch("platform.system", return_value=system),
+        ):
             cmd.run()
-            mock_run.assert_called_once_with(["open", url], check=True)
+            mock_popen.assert_called_once_with(expected_command)
 
-    def test_run_raises_on_subprocess_error(self) -> None:
-        """Run() raises CalledProcessError when subprocess fails."""
-        url = "vscode://file//project/src/test.py:10:5"
+    def test_run_uses_startfile_on_windows(self) -> None:
+        """Run() uses os.startfile on Windows."""
+        url = "test://url"
         cmd = EditorURL(url)
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.CalledProcessError(1, ["open"])
-            with pytest.raises(subprocess.CalledProcessError):
-                cmd.run()
+        mock_startfile = MagicMock()
+        with (
+            patch.object(os, "startfile", mock_startfile, create=True),
+            patch("platform.system", return_value="Windows"),
+        ):
+            cmd.run()
+            mock_startfile.assert_called_once_with(url)
 
 
 class TestEditorSubprocess:
