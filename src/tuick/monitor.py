@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import requests_unixsocket  # type: ignore[import-untyped]
 
+from tuick.console import console
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
@@ -110,12 +112,14 @@ class MonitorThread:
         *,
         path: Path | None = None,
         testing: bool = False,
+        verbose: bool = False,
     ) -> None:
         """Initialize monitor thread."""
         self.path = path if path is not None else Path.cwd()
         self.socket_path = socket_path
         self.reload_cmd = reload_cmd
         self.testing = testing
+        self.verbose = verbose
         self._monitor: FilesystemMonitor | None = None
         self._thread: threading.Thread | None = None
         self._session = requests_unixsocket.Session()
@@ -138,7 +142,17 @@ class MonitorThread:
         quoted_path = urllib.parse.quote(str(self.socket_path), safe="")
         socket_url = f"http+unix://{quoted_path}"
         body = f"reload('{self.reload_cmd}')"
-        self._session.post(socket_url, data=body)
+
+        if self.verbose:
+            console.print(f"[dim]POST {socket_url}[/]")
+            console.print(f"[dim]  Body: {body!r}[/]")
+
+        response = self._session.post(socket_url, data=body)
+
+        if self.verbose:
+            console.print(f"[dim]  Status: {response.status_code}[/]")
+            if response.text:
+                console.print(f"[dim]  Response: {response.text!r}[/]")
 
     def stop(self) -> None:
         """Stop monitoring thread."""

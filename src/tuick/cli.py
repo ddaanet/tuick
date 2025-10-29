@@ -18,8 +18,8 @@ if typing.TYPE_CHECKING:
     from collections.abc import Iterable
 
 import typer
-from rich.console import Console
 
+from tuick.console import console, err_console
 from tuick.editor import (
     UnsupportedEditorError,
     get_editor_command,
@@ -30,11 +30,7 @@ from tuick.parser import FileLocationNotFoundError, get_location, split_blocks
 
 app = typer.Typer()
 
-console = Console()
-err_console = Console(stderr=True)
 
-
-# ruff: noqa: S607 start-process-with-partial-path
 # ruff: noqa: FBT001 FBT003 Typer API uses boolean arguments for flags
 # ruff: noqa: B008 function-call-in-default-argument
 
@@ -79,14 +75,17 @@ def main(
     elif select:
         select_command(select, verbose=verbose)
     else:
-        list_command(command)
+        list_command(command, verbose=verbose)
 
 
-def list_command(command: list[str]) -> None:
+def list_command(command: list[str], *, verbose: bool = False) -> None:
     """List errors from running COMMAND."""
     myself = sys.argv[0]
-    reload_cmd = quote_command([myself, "--reload", "--", *command])
-    select_cmd = quote_command([myself, "--select"])
+    verbose_flag = ["-v"] if verbose else []
+    reload_cmd = quote_command(
+        [myself, "--reload", *verbose_flag, "--", *command]
+    )
+    select_cmd = quote_command([myself, "--select", *verbose_flag])
     env = os.environ.copy()
     env["FZF_DEFAULT_COMMAND"] = reload_cmd
 
@@ -94,39 +93,56 @@ def list_command(command: list[str]) -> None:
         tmpdir = stack.enter_context(tempfile.TemporaryDirectory())
         socket_path = Path(tmpdir) / "fzf.sock"
 
-        monitor = MonitorThread(socket_path, reload_cmd)
+        monitor = MonitorThread(socket_path, reload_cmd, verbose=verbose)
         monitor.start()
         stack.callback(monitor.stop)
 
+        fzf_cmd = [
+            "fzf",
+            f"--listen={socket_path}",
+            "--read0",
+            "--ansi",
+            "--no-sort",
+            "--reverse",
+            "--disabled",
+            "--color=dark",
+            "--highlight-line",
+            "--wrap",
+            "--no-input",
+            "--track",
+            "--bind",
+            ",".join(
+                [
+                    f"enter,right:execute({select_cmd} {{}})",
+                    f"r:reload({reload_cmd})",
+                    "q:abort",
+                    "space:down",
+                    "backspace:up",
+                    "zero:abort",
+                ]
+            ),
+        ]
+
+        if verbose:
+            console.print(f"[dim]$ {quote_command(fzf_cmd)}[/]")
+
         result = subprocess.run(
-            [
-                "fzf",
-                f"--listen={socket_path}",
-                "--read0",
-                "--ansi",
-                "--no-sort",
-                "--reverse",
-                "--disabled",
-                "--color=dark",
-                "--highlight-line",
-                "--wrap",
-                "--no-input",
-                "--bind",
-                ",".join(
-                    [
-                        f"enter,right:execute({select_cmd} {{}})",
-                        f"r:reload({reload_cmd})",
-                        "q:abort",
-                        "space:down",
-                        "backspace:up",
-                        "zero:abort",
-                    ]
-                ),
-            ],
+            fzf_cmd,
             env=env,
             text=True,
             check=False,
         )
+
+        if verbose:
+            if result.returncode == 0:
+                console.print("[dim]fzf exited normally (0)[/]")
+            elif result.returncode == 130:
+                console.print("[dim]fzf aborted by user (130)[/]")
+            else:
+                console.print(
+                    f"[yellow]fzf exited with status {result.returncode}[/]"
+                )
+
         if result.returncode not in [0, 130]:
             # 130 means fzf was aborted with ctrl-C or ESC
             sys.exit(result.returncode)
@@ -175,7 +191,8 @@ def select_command(selection: str, *, verbose: bool = False) -> None:
         raise typer.Exit(1) from e
 
     # Display and execute command
-    editor_command.print_to(console)
+    if verbose:
+        editor_command.print_to(console)
     try:
         editor_command.run()
     except subprocess.CalledProcessError as e:

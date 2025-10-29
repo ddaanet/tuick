@@ -65,7 +65,7 @@ def test_cli_select_option() -> None:
     ):
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         result = runner.invoke(
-            app, ["--select", "src/test.py:10:5: error: Test"]
+            app, ["--verbose", "--select", "src/test.py:10:5: error: Test"]
         )
         assert result.exit_code == 0
         assert result.stdout == "vi +10 '+normal! 5l' src/test.py\n"
