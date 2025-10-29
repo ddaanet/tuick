@@ -8,7 +8,7 @@ help:
 # Install tuick using uv tool
 [group('user')]
 install:
-    uv tool install --no-cache file://.
+    uv tool install --force --no-cache file://.
 
 # Development workflow: check, test
 [group('dev')]
@@ -78,7 +78,7 @@ tuick: compile
     && uv run --dev docformatter --in-place {{ python_dirs }}
     uv run --dev tuick -- ruff check --quiet {{ python_dirs }}
     uv run --dev tuick -- mypy {{ python_dirs }}
-    uv run --dev pytest --no-header
+    uv run --dev tuick -- pytest --no-header
 
 
 # Report FIXME, TODO, XXX, HACK comments
