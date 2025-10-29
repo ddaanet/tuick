@@ -141,7 +141,7 @@ class MonitorThread:
         """Send reload command via HTTP POST to Unix socket."""
         quoted_path = urllib.parse.quote(str(self.socket_path), safe="")
         socket_url = f"http+unix://{quoted_path}"
-        body = f"reload('{self.reload_cmd}')"
+        body = f"reload:{self.reload_cmd}"
 
         if self.verbose:
             console.print(f"[dim]POST {socket_url}[/]")

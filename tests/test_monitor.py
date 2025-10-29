@@ -138,6 +138,6 @@ def test_monitor_thread_sends_reload_to_socket(
         (tmp_path / "test.py").touch()
 
         body = request_queue.get(timeout=1)
-        assert body == f"reload('{reload_cmd}')"
+        assert body == f"reload:{reload_cmd}"
     finally:
         monitor_thread.stop()
