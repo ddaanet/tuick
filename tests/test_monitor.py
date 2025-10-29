@@ -44,8 +44,11 @@ def event_queue(
 
 
 @pytest.fixture
-def http_socket() -> Iterator[tuple[Path, Queue[str]]]:
+def http_socket(
+    request: pytest.FixtureRequest,
+) -> Iterator[tuple[Path, Queue[str]]]:
     """HTTP server on Unix socket, returns socket path and request queue."""
+    num_requests = getattr(request, "param", 1)
     request_queue: Queue[str] = Queue()
 
     class TestHandler(http.server.BaseHTTPRequestHandler):
@@ -67,11 +70,25 @@ def http_socket() -> Iterator[tuple[Path, Queue[str]]]:
         tmpdir = stack.enter_context(tempfile.TemporaryDirectory())
         socket_path = Path(tmpdir) / "fzf.sock"
         server = socketserver.UnixStreamServer(str(socket_path), TestHandler)
+        server.timeout = 1
+        has_timed_out = False
+
+        def handle_timeout():
+            nonlocal has_timed_out
+            has_timed_out = True
+
+        def handle_requests() -> None:
+            for _ in range(num_requests):
+                server.handle_request()
+                if has_timed_out:
+                    break
+
+        server.handle_timeout = handle_timeout  # type: ignore[method-assign]
         stack.enter_context(server)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread = threading.Thread(target=handle_requests)
         thread.start()
-        stack.callback(server.shutdown)
         yield socket_path, request_queue
+        thread.join()
 
 
 def test_monitor_without_gitignore_detects_all_files(
