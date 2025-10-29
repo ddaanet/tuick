@@ -97,10 +97,46 @@ RUFF_REGEX = re.compile(
     """,
     re.MULTILINE + re.VERBOSE,
 )
+ANSI_REGEX = re.compile(
+    r"""
+    \x1B                    # ESC character (0x1B, decimal 27)
+    (?:                     # ECMA-48 escape sequences (two types)
+        [@-Z\\-_]           # Fe sequence: ESC + single byte
+                            #   @-Z: 0x40-0x5A
+                            #   \:   0x5C (backslash)
+                            #   ]-_: 0x5D-0x5F
+                            # Examples: ESC M (reverse index)
+    |                       # OR
+        \[                  # CSI (Control Sequence Introducer): ESC [
+        [0-?]*              # Parameter bytes (0 or more): 0x30-0x3F
+                            #   0-9: digits for numeric parameters
+                            #   :;<=>?: separators and private markers
+                            # Examples: 31, 1;32, ?25, >
+        [ -/]*              # Intermediate bytes (0 or more): 0x20-0x2F
+                            # Modifies final byte meaning (rare)
+        [@-~]               # Final byte (exactly 1): 0x40-0x7E
+                            # Determines the command
+                            # m: SGR (colors), H: cursor, J: erase, etc.
+    )
+    """,
+    re.VERBOSE,
+)
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text.
+
+    Strips ECMA-48 escape sequences:
+    - Fe sequences: ESC + single byte (ESC M, ESC 7, etc.)
+    - CSI sequences: ESC [ params intermediates final
+      Common: ESC[31m (red), ESC[1;32m (bold green), ESC[0m (reset)
+    """
+    return ANSI_REGEX.sub("", text)
 
 
 def classify_line(text: str) -> LineType:
     """Classify a line by its type for block splitting."""
+    text = strip_ansi(text)
     if not text:
         return LineType.BLANK
     if re.match(MYPY_NOTE_REGEX, text):
@@ -121,6 +157,7 @@ def extract_location_str(text: str) -> str | None:
         Location string like "path:line" or "path:line:col",
         or None if no match
     """
+    text = strip_ansi(text)
     if match := re.match(LINE_REGEX, text):
         return match.group(1)
     return None
@@ -257,6 +294,7 @@ def get_location(selection: str) -> FileLocation:
     Raises:
         FileLocationNotFoundError: If location pattern not found
     """
+    selection = strip_ansi(selection)
     match = re.search(LINE_REGEX, selection)
     if match is None:
         match = re.search(RUFF_REGEX, selection)

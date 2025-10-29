@@ -2,7 +2,14 @@
 
 import pytest
 
-from tuick.parser import FileLocation, get_location, split_blocks
+from tuick.parser import (
+    FileLocation,
+    LineType,
+    classify_line,
+    extract_location_str,
+    get_location,
+    split_blocks,
+)
 
 
 def blocks_from_text(text: str) -> list[str]:
@@ -310,3 +317,21 @@ def test_split_blocks_pytest(blocks: list[str]) -> None:
 def test_get_location(block: str, expected: FileLocation) -> None:
     """Extract location from all supported formats."""
     assert expected == get_location(block)
+
+
+def test_classify_line_with_ansi() -> None:
+    """ANSI codes are removed before matching."""
+    line = "src/test.py:42:\x1b[31m error: Type error\x1b[0m"
+    assert classify_line(line) == LineType.LOCATION
+
+
+def test_extract_location_str_with_ansi() -> None:
+    """ANSI codes are removed before extracting location."""
+    line = "\x1b[1msrc/file.py:10:5: \x1b[31merror message\x1b[0m"
+    assert extract_location_str(line) == "src/file.py:10:5"
+
+
+def test_get_location_with_ansi() -> None:
+    """ANSI codes are removed before extracting location."""
+    block = "\x1b[31mtests/test_example.py:100: ValueError\x1b[0m"
+    assert get_location(block) == FileLocation("tests/test_example.py", 100)
