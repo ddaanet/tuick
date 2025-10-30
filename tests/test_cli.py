@@ -1,6 +1,5 @@
 """Tests for the CLI module."""
 
-import os
 import subprocess
 from io import StringIO
 from typing import Any
