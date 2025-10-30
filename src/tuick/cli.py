@@ -229,7 +229,7 @@ def select_command(selection: str, *, verbose: bool = False) -> None:
 
     # Display and execute command
     if verbose:
-        editor_command.print_to(console)
+        console.print(editor_command)
     try:
         editor_command.run()
     except subprocess.CalledProcessError as e:

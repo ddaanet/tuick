@@ -309,13 +309,13 @@ def test_get_editor_command(
 class TestEditorURL:
     """Tests for EditorURL class."""
 
-    def test_print_to_displays_open_command(self) -> None:
-        """print_to() displays 'open {url}'."""
+    def test_displays_open_command(self) -> None:
+        """Rich console displays 'open {url}'."""
         url = "vscode://file//project/src/test.py:10:5"
         cmd = EditorURL(url)
         output = StringIO()
         console = Console(file=output, force_terminal=False)
-        cmd.print_to(console)
+        console.print(cmd)
         assert output.getvalue() == f"open {url}\n"
 
     @pytest.mark.parametrize(
@@ -354,22 +354,22 @@ class TestEditorURL:
 class TestEditorSubprocess:
     """Tests for EditorSubprocess class."""
 
-    def test_print_to_displays_formatted_command(self) -> None:
-        """print_to() displays shell-quoted command args."""
+    def test_displays_formatted_command(self) -> None:
+        """Rich console displays shell-quoted command args."""
         args = ["vim", "+10", "src/test.py"]
         cmd = EditorSubprocess(args)
         output = StringIO()
         console = Console(file=output, force_terminal=False)
-        cmd.print_to(console)
+        console.print(cmd)
         assert output.getvalue() == "vim +10 src/test.py\n"
 
-    def test_print_to_shell_quotes_spaces(self) -> None:
-        """print_to() correctly shell quotes args with spaces."""
+    def test_shell_quotes_spaces(self) -> None:
+        """Rich console correctly shell quotes args with spaces."""
         args = ["/usr/bin/my editor", "--arg", "file with spaces.py"]
         cmd = EditorSubprocess(args)
         output = StringIO()
         console = Console(file=output, force_terminal=False)
-        cmd.print_to(console)
+        console.print(cmd)
         expected = "'/usr/bin/my editor' --arg 'file with spaces.py'\n"
         assert output.getvalue() == expected
 

@@ -12,8 +12,6 @@ from urllib.parse import quote
 if typing.TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from rich.console import Console
-
     from tuick.parser import FileLocation
 
 
@@ -22,10 +20,6 @@ class EditorCommand(typing.Protocol):
 
     def run(self) -> None:
         """Execute the command, may raise subprocess.CalledProcessError."""
-        ...
-
-    def print_to(self, console: Console) -> None:
-        """Display command to console."""
         ...
 
 
@@ -45,9 +39,9 @@ class EditorURL:
         else:
             subprocess.Popen(["xdg-open", self.url])  # noqa: S607
 
-    def print_to(self, console: Console) -> None:
-        """Display the open command."""
-        console.print(f"open {self.url}")
+    def __rich__(self) -> str:
+        """Rich formatted editor URL command."""
+        return f"open {self.url}"
 
 
 @dataclass
@@ -60,9 +54,9 @@ class EditorSubprocess:
         """Execute the command."""
         subprocess.run(self.args, check=True)
 
-    def print_to(self, console: Console) -> None:
-        """Display the command with shell quoting."""
-        console.print(shlex.join(self.args))
+    def __rich__(self) -> str:
+        """Rich formatted subprocess command."""
+        return shlex.join(self.args)
 
 
 class UnsupportedEditorError(ValueError):
