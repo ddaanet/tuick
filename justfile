@@ -14,7 +14,7 @@ install:
 
 # Development workflow: check, test
 [group('dev')]
-dev: compile check test
+dev: fail_if_claudecode compile check test
 
 # Agent workflow: check, test with minimal output
 [group('agent')]
@@ -30,6 +30,12 @@ clean:
     rm -rf src/*.so
 
 python_dirs := "src tests"
+
+# Fail if CLAUDECODE is set
+[private]
+[no-exit-message]
+fail_if_claudecode:
+    @{{ if env('CLAUDECODE', '') != '' { '! echo "' + style("error") + '⛔️ Denied: use agent recipes' + NORMAL + '" >&2' } else { '' } }}
 
 # Compile python files, quick test for valid syntax
 [private]
@@ -48,7 +54,7 @@ run-dev := "uv run --dev"
 
 # Run test suite
 [group('dev')]
-test *ARGS:
+test *ARGS: fail_if_claudecode
     uv run --dev pytest --no-header {{ ARGS }}
 
 # Run test suite in agent mode (less output)
@@ -64,14 +70,14 @@ agent-test *ARGS:
 
 # Static code analysis and style checks
 [group('dev')]
-check: compile
+check: fail_if_claudecode compile
     uv run --dev ruff format --check {{ python_dirs }}
     uv run --dev docformatter --check {{ python_dirs }}
     uv run --dev ruff check --quiet {{ python_dirs }}
     uv run --dev mypy {{ python_dirs }}
 
 [group('dev')]
-tuick: compile
+tuick: fail_if_claudecode compile
     uv run --dev ruff format --check {{ python_dirs }} \
     || read -p "Auto-format? (enter or ctrl-C) " \
     && uv run --dev ruff format {{ python_dirs }}
@@ -91,7 +97,6 @@ fixme:
 
 concise := "--output-format concise"
 
-[private]
 [group('agent')]
 [no-exit-message]
 agent-check: agent-compile
@@ -106,7 +111,7 @@ agent-check: agent-compile
 # Ruff auto-fix
 [group('dev')]
 ruff-fix *ARGS:
-    uv run --dev ruff check --fix {{ ARGS }} {{ python_dirs }}
+    uv run --dev ruff check --quiet --fix {{ ARGS }} {{ python_dirs }}
 
 # Reformat code, fail if formatting errors remain
 [group('dev')]

@@ -1,8 +1,5 @@
 # Tuick Task List
 
-- Modify justfile so dev, check, test, tuick fail early if CLAUDECODE is set
-  and non-empty.
-
 - Refactor MonitorThread to reduce argument count (currently 6 > 5).
 
 - Find type-safe solution to avoid cast in ReloadRequestHandler.handle().
