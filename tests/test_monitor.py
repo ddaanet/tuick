@@ -89,6 +89,5 @@ def test_monitor_thread_sends_reload_to_socket(
         finally:
             monitor_thread.stop()
 
-    mock_monitor.sync.assert_called_once()
     mock_monitor.iter_changes.assert_called_once()
     mock_monitor.stop.assert_called_once()

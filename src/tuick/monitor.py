@@ -59,6 +59,7 @@ class FilesystemMonitor:
             "--only-emit-events",
             "--emit-events-to=stdio",
             "--no-meta",
+            "--postpone",
         ]
         if testing:
             cmd.append("--debounce=0")
@@ -71,13 +72,6 @@ class FilesystemMonitor:
             text=True,
         )
         assert self._proc.stdout is not None
-
-    def sync(self) -> None:
-        """Block until initial empty event from watchexec."""
-        assert self._proc.stdout is not None
-        line = self._proc.stdout.readline()
-        if line != "\n":
-            raise ValueError(f"Expected blank line, received: {line!r}")
 
     def iter_changes(self) -> Iterator[MonitorEvent]:
         """Iterate over filesystem change events."""
@@ -127,7 +121,6 @@ class MonitorThread:
     def start(self) -> None:
         """Start monitoring thread."""
         self._monitor = FilesystemMonitor(self.path, testing=self.testing)
-        self._monitor.sync()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
