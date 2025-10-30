@@ -45,7 +45,9 @@
 
 #### Testing
 
-- To run specific tests, use `just agent-test`, it's a wrapper for pytest.
+- `just agent-test ...` to run full suite or specific tests
+- `just agent-test -vv ...` for full diffs
+- Read error messages: they contain hints or directions
 - Checking complex structures:
   - When comparing complex structures (lists, dicts, dataclasses) in tests
   - Do not assert comparisons to the value of individual members
@@ -69,7 +71,7 @@
 - Use `uv run` for all commands that need the python enviroment
 - Use `uv add` to install new production dependencies
 - Use `uv add --dev` to install new development dependencies
-- Require Python >=3.12 in `pyproject.toml`
+- Require Python >=3.14: recursive types, no future, no quotes
 - Write fully typed code with modern hints (`list[T]` not `List[T]`)
 - Keep try blocks minimal to catch only intended errors
 - Don't start unittest docstrings with "Test"
@@ -78,7 +80,7 @@
 
 - `#!/usr/bin/env bash -euo pipefail`
   - Use `bash` from homebrew
-  - Enable bash strict mode
+  - Enable bash strict mode `-euo pipefail`
     - exit on error
     - undefined variables are error
     - pipe fail if any command fails
@@ -96,7 +98,6 @@
 - Be concise and conversational but professional
 - Avoid business-speak, buzzwords, unfounded self-affirmations
 - State facts directly even if they don't conform to requests
-- Use Markdown formatting
 - Use Markdown formatting
 - French typographic rules: non-breaking spaces before ";:?!", French quotes,
   guillemet-apostrophe
