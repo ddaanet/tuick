@@ -3,9 +3,7 @@ r"""Tests for filesystem monitoring."""
 import contextlib
 import http.server
 import socketserver
-import tempfile
 import threading
-from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock, patch
@@ -13,24 +11,29 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tuick.monitor import FilesystemMonitor, MonitorEvent, MonitorThread
+from tuick.reload_socket import ReloadSocketServer, generate_api_key
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
 
 @pytest.fixture
 def http_socket(
     request: pytest.FixtureRequest,
-) -> Iterator[tuple[Path, Queue[str]]]:
-    """HTTP server on Unix socket, returns socket path and request queue."""
+) -> Iterator[tuple[int, Queue[tuple[str, dict[str, str]]]]]:
+    """HTTP server on TCP localhost, returns port and request queue.
+
+    Each queue item is (body, headers_dict).
+    """
     num_requests = getattr(request, "param", 1)
-    request_queue: Queue[str] = Queue()
+    request_queue: Queue[tuple[str, dict[str, str]]] = Queue()
 
     class TestHandler(http.server.BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode()
-            request_queue.put(body)
+            request_queue.put((body, dict(self.headers)))
             self.send_response(200)
             self.end_headers()
 
@@ -42,9 +45,8 @@ def http_socket(
             pass
 
     with contextlib.ExitStack() as stack:
-        tmpdir = stack.enter_context(tempfile.TemporaryDirectory())
-        socket_path = Path(tmpdir) / "fzf.sock"
-        server = socketserver.UnixStreamServer(str(socket_path), TestHandler)
+        server = socketserver.TCPServer(("127.0.0.1", 0), TestHandler)
+        port = server.server_address[1]
         server.timeout = 1
         has_timed_out = False
 
@@ -62,16 +64,24 @@ def http_socket(
         stack.enter_context(server)
         thread = threading.Thread(target=handle_requests)
         thread.start()
-        yield socket_path, request_queue
+        yield port, request_queue
         thread.join()
 
 
 def test_monitor_thread_sends_reload_to_socket(
-    tmp_path: Path, http_socket: tuple[Path, Queue[str]]
+    tmp_path: Path,
+    http_socket: tuple[int, Queue[tuple[str, dict[str, str]]]],
 ) -> None:
-    """MonitorThread sends POST reload(command) to socket on file change."""
-    socket_path, request_queue = http_socket
+    """MonitorThread sends POST reload(command) to fzf port on file change."""
+    port, request_queue = http_socket
     reload_cmd = "ruff check src/"
+    fzf_api_key = generate_api_key()
+
+    # Create real reload_server and set fzf_port
+    tuick_api_key = generate_api_key()
+    reload_server = ReloadSocketServer(tuick_api_key)
+    reload_server.fzf_port = port
+    reload_server.fzf_port_ready.set()
 
     mock_monitor = Mock(spec=FilesystemMonitor)
     mock_event = Mock(spec=MonitorEvent)
@@ -79,13 +89,18 @@ def test_monitor_thread_sends_reload_to_socket(
 
     with patch("tuick.monitor.FilesystemMonitor", return_value=mock_monitor):
         monitor_thread = MonitorThread(
-            socket_path, reload_cmd, path=tmp_path, testing=True
+            reload_cmd,
+            reload_server,
+            fzf_api_key,
+            path=tmp_path,
+            testing=True,
         )
         monitor_thread.start()
 
         try:
-            body = request_queue.get(timeout=1)
+            body, headers = request_queue.get(timeout=1)
             assert body == f"reload:{reload_cmd}"
+            assert headers.get("X-Api-Key") == fzf_api_key
         finally:
             monitor_thread.stop()
 

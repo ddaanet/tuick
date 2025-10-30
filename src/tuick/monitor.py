@@ -3,17 +3,18 @@
 import subprocess
 import sys
 import threading
-import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import requests_unixsocket  # type: ignore[import-untyped]
+import requests
 
 from tuick.console import console
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+
+    from tuick.reload_socket import ReloadSocketServer
 
 # ruff: noqa: TRY003
 
@@ -99,10 +100,11 @@ class FilesystemMonitor:
 class MonitorThread:
     """Thread that monitors filesystem and sends reload commands via HTTP."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        socket_path: Path,
         reload_cmd: str,
+        reload_server: ReloadSocketServer,
+        fzf_api_key: str,
         *,
         path: Path | None = None,
         testing: bool = False,
@@ -110,13 +112,13 @@ class MonitorThread:
     ) -> None:
         """Initialize monitor thread."""
         self.path = path if path is not None else Path.cwd()
-        self.socket_path = socket_path
         self.reload_cmd = reload_cmd
+        self.reload_server = reload_server
+        self.fzf_api_key = fzf_api_key
         self.testing = testing
         self.verbose = verbose
         self._monitor: FilesystemMonitor | None = None
         self._thread: threading.Thread | None = None
-        self._session = requests_unixsocket.Session()
 
     def start(self) -> None:
         """Start monitoring thread."""
@@ -131,16 +133,22 @@ class MonitorThread:
             self._send_reload()
 
     def _send_reload(self) -> None:
-        """Send reload command via HTTP POST to Unix socket."""
-        quoted_path = urllib.parse.quote(str(self.socket_path), safe="")
-        socket_url = f"http+unix://{quoted_path}"
+        """Send reload command via HTTP POST to fzf socket."""
+        # Wait for fzf_port to be set by start command
+        self.reload_server.fzf_port_ready.wait()
+
+        assert self.reload_server.fzf_port is not None
+        fzf_url = f"http://127.0.0.1:{self.reload_server.fzf_port}"
         body = f"reload:{self.reload_cmd}"
+        headers = {"X-Api-Key": self.fzf_api_key}
 
         if self.verbose:
-            console.print(f"[dim]POST {socket_url}[/]")
+            console.print(f"[dim]POST {fzf_url}[/]")
             console.print(f"[dim]  Body: {body!r}[/]")
 
-        response = self._session.post(socket_url, data=body)
+        response = requests.post(
+            fzf_url, data=body, headers=headers, timeout=10
+        )
 
         if self.verbose:
             console.print(f"[dim]  Status: {response.status_code}[/]")

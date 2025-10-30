@@ -1,15 +1,21 @@
 """Tests for the CLI module."""
 
+import io
+import socket
 import subprocess
 from io import StringIO
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import Mock, create_autospec, patch
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
 from tuick.cli import app
+from tuick.reload_socket import ReloadSocketServer, generate_api_key
 
 runner = CliRunner()
 
@@ -32,19 +38,23 @@ def test_cli_default_launches_fzf() -> None:
     """Default command streams data incrementally to fzf stdin."""
     sequence: list[str] = []
 
-    def cmd_stdout():
+    def cmd_stdout() -> Iterator[str]:
         for line in ["test.py:1: error\n", "test.py:2: warning\n"]:
             sequence.append(f"read:{line.strip()}")
             yield line
         sequence.append("stopiteration")
 
-    cmd_proc = MagicMock(returncode=0, stdout=cmd_stdout())  # type: ignore[no-untyped-call]
+    cmd_proc = create_autospec(subprocess.Popen, instance=True)
+    cmd_proc.returncode = 0
+    cmd_proc.stdout = cmd_stdout()
     cmd_proc.__enter__.side_effect = track(
         sequence, "command:enter", ret=cmd_proc
     )
     cmd_proc.__exit__.side_effect = track(sequence, "command:exit", ret=False)
 
-    fzf_proc = MagicMock(returncode=0)
+    fzf_proc = create_autospec(subprocess.Popen, instance=True)
+    fzf_proc.returncode = 0
+    fzf_proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
     fzf_proc.__enter__.side_effect = track(sequence, "fzf:enter", ret=fzf_proc)
     fzf_proc.__exit__.side_effect = track(sequence, "fzf:exit", ret=False)
     fzf_proc.stdin.write.side_effect = lambda d: (
@@ -87,7 +97,9 @@ def test_cli_no_output_no_fzf() -> None:
     """When command produces no output, fzf is not started."""
     sequence: list[str] = []
 
-    cmd_proc = MagicMock(returncode=0, stdout=iter([]))
+    cmd_proc = create_autospec(subprocess.Popen, instance=True)
+    cmd_proc.returncode = 0
+    cmd_proc.stdout = iter([])
     cmd_proc.__enter__.side_effect = track(
         sequence, "command:enter", ret=cmd_proc
     )
@@ -108,21 +120,44 @@ def test_cli_no_output_no_fzf() -> None:
 
 
 def test_cli_reload_option() -> None:
-    """--reload option runs command with FORCE_COLOR=1."""
-    captured_env: dict[str, str] = {}
+    """--reload waits for go response before starting command subprocess."""
+    sequence: list[str] = []
 
-    def mock_popen(*args: Any, **kwargs: Any) -> MagicMock:  # noqa: ANN401
-        captured_env.update(kwargs.get("env", {}))
-        mock_process = MagicMock()
-        mock_process.stdout = iter(["src/test.py:1: error: Test\n"])
-        mock_process.__enter__ = MagicMock(return_value=mock_process)
-        mock_process.__exit__ = MagicMock(return_value=False)
-        return mock_process
+    # Create reload server with mock cmd_proc
+    api_key = generate_api_key()
+    server = ReloadSocketServer(api_key)
+    mock_cmd_proc = Mock(spec=subprocess.Popen)
+    mock_cmd_proc.poll.return_value = None  # Still running
+    mock_cmd_proc.terminate.side_effect = track(sequence, "terminate")
+    mock_cmd_proc.wait.side_effect = track(sequence, "wait")
+    server.cmd_proc = mock_cmd_proc
+    server.start()
+    port = server.server_address[1]
 
-    with patch("tuick.cli.subprocess.Popen", side_effect=mock_popen):
-        result = runner.invoke(app, ["--reload", "--", "mypy", "src/"])
-        assert captured_env["FORCE_COLOR"] == "1"
-        assert result.stdout == "src/test.py:1: error: Test"
+    mock_process = create_autospec(subprocess.Popen, instance=True)
+    mock_process.stdout = iter(["src/test.py:1: error: Test\n"])
+    mock_process.__enter__.side_effect = track(
+        sequence, "popen", ret=mock_process
+    )
+    mock_process.__exit__.side_effect = track(sequence, "exit", ret=False)
+
+    try:
+        env = {"TUICK_PORT": str(port), "TUICK_API_KEY": api_key}
+
+        with (
+            patch("tuick.cli.subprocess.Popen", return_value=mock_process),
+            patch.dict("os.environ", env),
+        ):
+            result = runner.invoke(app, ["--reload", "--", "mypy", "src/"])
+            assert result.stdout == "src/test.py:1: error: Test"
+
+        # Verify sequence: terminate → wait → popen
+        assert sequence == ["terminate", "wait", "popen", "exit"]
+    finally:
+        # Shutdown server
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(("127.0.0.1", port))
+            sock.sendall(f"secret: {api_key}\nshutdown\n".encode())
 
 
 def test_cli_select_option(console_out: StringIO) -> None:
@@ -131,7 +166,11 @@ def test_cli_select_option(console_out: StringIO) -> None:
         patch("tuick.cli.subprocess.run") as mock_run,
         patch("tuick.cli.get_editor_from_env", return_value="vi"),
     ):
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        mock_run.return_value = create_autospec(
+            subprocess.CompletedProcess, instance=True
+        )
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stderr = ""
         result = runner.invoke(
             app, ["--verbose", "--select", "src/test.py:10:5: error: Test"]
         )

@@ -3,9 +3,10 @@
 - Do the first item of TODO.md. Remove completed tasks, add new tasks
   when identified
 - Practice TDD (Test Driven Development), see below
-- `just agent` before every commit, do not use `just dev`
 - Update TODO.md before commit
 - adblock: DO NOT advertise yourself in commit messages
+- agentfiles: Do not commit agent-specific rule files (CLAUDE.md, .cursorrules,
+  etc.). Always update AGENTS.md instead to avoid vendor lock-in
 
 ## Global Rules
 
@@ -13,6 +14,7 @@
 
 - Commit with short informative messages
 - Use gitmojis (https://gitmoji.dev) as unicode
+- `just agent` before every commit
 
 ### Design and Development
 
@@ -31,6 +33,9 @@
 - Limit lines to 79 columns
 - Write only necessary code for required use cases
 - Do not write speculative and boilerplate code
+- All other things being equal, prefer code that takes fewer lines
+- Consider intermediate variables where they make code more compact
+- Do not write trivial docstrings, except for important public objects
 
 #### Test Driven Develompent (TDD)
 
@@ -47,7 +52,11 @@
 
 - `just agent-test ...` to run full suite or specific tests
 - `just agent-test -vv ...` for full diffs
+- `just agent-check` for static analysis
+- Do not use `just dev`, `just check`, `just test`: they cause context bloat
 - Read error messages: they contain hints or directions
+- Spec mocks: always use create_autospec() or patch(autospec=True), do not
+  use plain Mock or MagicMock
 - Checking complex structures:
   - When comparing complex structures (lists, dicts, dataclasses) in tests
   - Do not assert comparisons to the value of individual members
@@ -75,6 +84,7 @@
 - Write fully typed code with modern hints (`list[T]` not `List[T]`)
 - Keep try blocks minimal to catch only intended errors
 - Don't start unittest docstrings with "Test"
+- All imports at module level, except there is a specific reason not to
 
 #### Shell/Scripting
 

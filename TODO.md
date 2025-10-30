@@ -1,19 +1,17 @@
 # Tuick Task List
 
-- Open a unix socket in the top process, set env TUICK_SOCKET, so reload
-  process (--reload) can connect. Simple line based protocol. Currently only
-  message is "reload", to notify that a reload was initiated either by the user
-  or through the fzf socket. Wait for "go" response indicates that, if the
-  input process was still live, it has been killed and waited.
+- Modify justfile so dev, check, test, tuick fail early if CLAUDECODE is set
+  and non-empty.
 
-  - First test and implement server side
-  - Then implement client side. Test as integration test by mocking subprocess,
-    going through Typer test wrapper, and checking the sequence:
-    proc.terminate, proc.wait, reply sent.
+- Refactor MonitorThread to reduce argument count (currently 6 > 5).
+
+- Find type-safe solution to avoid cast in ReloadRequestHandler.handle().
 
 - Test editors with CLI integration.
 
 - Test editors with URL integration, on Mac/Linux/Windows.
+
+- Fix uses of generic mocks where specs could be used.
 
 - Enable filtering.
   - That (probably) implies removing the "zero:abort" binding.
