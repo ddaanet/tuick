@@ -14,7 +14,10 @@
 
 - Commit with short informative messages
 - Use gitmojis (https://gitmoji.dev) as unicode
-- `just agent` before every commit
+- `just agent` before every commit, to run all checks and tests
+- `just format` to format code
+- `just ruff-fix` to apply automated fixes
+
 
 ### Design and Development
 
@@ -51,9 +54,7 @@
 #### Testing
 
 - `just agent-test ...` to run full suite or specific tests
-- `just agent-test -vv ...` for full diffs
-- `just agent-check` for static analysis
-- Do not use `just dev`, `just check`, `just test`: they cause context bloat
+- `just agent-test -vv ...` for full assert diffs
 - Read error messages: they contain hints or directions
 - Spec mocks: always use create_autospec() or patch(autospec=True), do not
   use plain Mock or MagicMock
