@@ -53,7 +53,7 @@ class MonitorEvent:
 class FilesystemMonitor:
     """Filesystem monitor using watchexec."""
 
-    def __init__(self, path: Path, *, testing: bool = False) -> None:
+    def __init__(self, path: Path) -> None:
         """Initialize and start the filesystem monitor subprocess."""
         cmd = [
             "watchexec",
@@ -62,9 +62,6 @@ class FilesystemMonitor:
             "--no-meta",
             "--postpone",
         ]
-        if testing:
-            cmd.append("--debounce=0")
-
         self._proc = subprocess.Popen(
             cmd,
             cwd=str(path),
@@ -100,14 +97,13 @@ class FilesystemMonitor:
 class MonitorThread:
     """Thread that monitors filesystem and sends reload commands via HTTP."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         reload_cmd: str,
         reload_server: ReloadSocketServer,
         fzf_api_key: str,
         *,
         path: Path | None = None,
-        testing: bool = False,
         verbose: bool = False,
     ) -> None:
         """Initialize monitor thread."""
@@ -115,14 +111,13 @@ class MonitorThread:
         self.reload_cmd = reload_cmd
         self.reload_server = reload_server
         self.fzf_api_key = fzf_api_key
-        self.testing = testing
         self.verbose = verbose
         self._monitor: FilesystemMonitor | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         """Start monitoring thread."""
-        self._monitor = FilesystemMonitor(self.path, testing=self.testing)
+        self._monitor = FilesystemMonitor(self.path)
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 

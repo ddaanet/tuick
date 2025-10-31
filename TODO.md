@@ -1,7 +1,5 @@
 # Tuick Task List
 
-- Refactor MonitorThread to reduce argument count (currently 6 > 5).
-
 - Find type-safe solution to avoid cast in ReloadRequestHandler.handle().
 
 - Test editors with CLI integration.

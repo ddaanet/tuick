@@ -93,7 +93,6 @@ def test_monitor_thread_sends_reload_to_socket(
             reload_server,
             fzf_api_key,
             path=tmp_path,
-            testing=True,
         )
         monitor_thread.start()
 
