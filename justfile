@@ -10,7 +10,7 @@ help:
 # Install tuick using uv tool
 [group('user')]
 install:
-    uv tool install --force --no-cache file://.
+    uv tool install --refresh-package tuick file://.
 
 # Development workflow: check, test
 [group('dev')]
@@ -21,13 +21,15 @@ dev: fail_if_claudecode compile check test
 agent: agent-compile agent-check agent-test
     @echo OK
 
-# Clean generated files
+# Clean build files
 [group('dev')]
 clean:
-    rm -rf .dmypy.json .mypy_cache .pytest_cache .ruff_cache .venv \
-    .vscode */__pycache__ dist
-    # hatch-mypyc, which gets invoked by "uv sync" leaves .so files in src
-    rm -rf src/*.so
+    rm -rf .venv */__pycache__ */*/__pycache__ build dist */*.so */*/*.so
+
+# Clean non-build caches and run files
+[group('dev')]
+clean-cache:
+    rm -rf .dmypy.json .mypy_cache .pytest_cache .ruff_cache
 
 python_dirs := "src tests"
 
@@ -57,7 +59,7 @@ run-dev := "uv run --dev"
 test *ARGS: fail_if_claudecode
     uv run --dev pytest --no-header {{ ARGS }}
 
-# Run test suite in agent mode (less output)
+# Run test suite, with less output
 [group('agent')]
 [no-exit-message]
 agent-test *ARGS:
@@ -67,15 +69,15 @@ agent-test *ARGS:
     quietly uv run --dev pytest --no-header --quiet --tb=short -p no:icdiff {{ ARGS }}
     if ! {{ is_dependency() }}; then echo OK; fi
 
-
 # Static code analysis and style checks
 [group('dev')]
 check: fail_if_claudecode compile
     uv run --dev ruff format --check {{ python_dirs }}
     uv run --dev docformatter --check {{ python_dirs }}
     uv run --dev ruff check --quiet {{ python_dirs }}
-    uv run --dev mypy {{ python_dirs }}
+    uv run --dev dmypy check {{ python_dirs }}
 
+# Interactive code analysis and style checks
 [group('dev')]
 tuick: fail_if_claudecode compile
     uv run --dev ruff format --check {{ python_dirs }} \
@@ -85,9 +87,8 @@ tuick: fail_if_claudecode compile
     || read -p "Auto-format? (enter or ctrl-C) " \
     && uv run --dev docformatter --in-place {{ python_dirs }}
     uv run --dev tuick -- ruff check --quiet {{ python_dirs }}
-    uv run --dev tuick -- mypy {{ python_dirs }}
+    uv run --dev tuick -- dmypy check {{ python_dirs }}
     uv run --dev tuick -- pytest --no-header
-
 
 # Report FIXME, TODO, XXX, HACK comments
 [group('dev')]
@@ -97,6 +98,7 @@ fixme:
 
 concise := "--output-format concise"
 
+# Static code analysis and style checks, with less output
 [group('agent')]
 [no-exit-message]
 agent-check: agent-compile
@@ -104,9 +106,8 @@ agent-check: agent-compile
     || { echo 'Try "just format"' >&2 ; false; }
     @uv run --dev docformatter --check {{ python_dirs }}
     @uv run --dev ruff check --quiet {{ concise }} {{ python_dirs }}
-    @uv run --dev mypy {{ python_dirs }}
+    @uv run --dev dmypy check {{ python_dirs }}
     @if ! {{ is_dependency() }}; then echo OK; fi
-
 
 # Ruff auto-fix
 [group('dev')]
