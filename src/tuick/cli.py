@@ -11,9 +11,7 @@ import shlex
 import socket
 import subprocess
 import sys
-import tempfile
 import typing
-from pathlib import Path
 
 if typing.TYPE_CHECKING:
     from collections.abc import Iterable
@@ -98,9 +96,6 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
     header = quote_command(command)
 
     with contextlib.ExitStack() as stack:
-        tmpdir = stack.enter_context(tempfile.TemporaryDirectory())
-        socket_path = Path(tmpdir) / "fzf.sock"
-
         # Create tuick reload coordination server
         tuick_api_key = generate_api_key()
         reload_server = ReloadSocketServer(tuick_api_key)
@@ -149,7 +144,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
             # Have output, start fzf
             fzf_cmd = [
                 "fzf",
-                f"--listen={socket_path}",
+                "--listen",
                 "--read0",
                 "--ansi",
                 "--no-sort",
@@ -182,9 +177,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
                 console.print(f"[dim]$ {quote_command(fzf_cmd)}[/]")
 
             with subprocess.Popen(
-                fzf_cmd,
-                stdin=subprocess.PIPE,
-                text=True,
+                fzf_cmd, stdin=subprocess.PIPE, text=True, env=env
             ) as fzf_proc:
                 if fzf_proc.stdin is None:
                     return
