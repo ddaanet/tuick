@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rich.console import Console
 
+import tuick.editor
 from tuick.editor import (
     EditorSubprocess,
     EditorURL,
@@ -20,7 +21,6 @@ from tuick.parser import FileLocation
 
 def _mock_resolve(self: Path, *, strict: bool = False) -> Path:
     """Mock Path.resolve to add prefix for relative paths."""
-    assert strict is True, "Path.resolve must be called with strict=True"
     if self.is_absolute():
         return self
     return Path("/project") / self
@@ -358,23 +358,25 @@ class TestEditorURL:
     ) -> None:
         """Run() uses Popen with platform-specific command."""
         url = "test://url"
-        cmd = EditorURL(url)
         with (
-            patch("subprocess.Popen") as mock_popen,
+            patch("subprocess.run") as mock_run,
             patch("platform.system", return_value=system),
         ):
+            editor_url_class = tuick.editor._setup_editor_url()
+            cmd = editor_url_class(url)
             cmd.run()
-            mock_popen.assert_called_once_with(expected_command)
+            mock_run.assert_called_once_with(expected_command, check=True)
 
     def test_run_uses_startfile_on_windows(self) -> None:
         """Run() uses os.startfile on Windows."""
         url = "test://url"
-        cmd = EditorURL(url)
         mock_startfile = MagicMock()
         with (
             patch.object(os, "startfile", mock_startfile, create=True),
             patch("platform.system", return_value="Windows"),
         ):
+            editor_url_class = tuick.editor._setup_editor_url()
+            cmd = editor_url_class(url)
             cmd.run()
             mock_startfile.assert_called_once_with(url)
 

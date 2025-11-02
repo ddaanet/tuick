@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
+from tuick.shell import quote_command_words
+
 if typing.TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -24,24 +26,62 @@ class EditorCommand(typing.Protocol):
 
 
 @dataclass
-class EditorURL:
-    """Editor command using URL scheme via 'open' command."""
+class BaseEditorURL:
+    """Editor command using URL scheme."""
 
     url: str
 
+    def _command_words(self) -> list[str]:
+        """Return the command as a list of words."""
+        raise NotImplementedError
+
     def run(self) -> None:
-        """Execute the open command."""
-        system = platform.system()
-        if system == "Darwin":
-            subprocess.Popen(["open", self.url])  # noqa: S607
-        elif system == "Windows":
-            os.startfile(self.url)  # type: ignore[attr-defined]  # noqa: S606
-        else:
-            subprocess.Popen(["xdg-open", self.url])  # noqa: S607
+        """Execute the command."""
+        subprocess.run(self._command_words(), check=True)
 
     def __rich__(self) -> str:
         """Rich formatted editor URL command."""
-        return f"open {self.url}"
+        words = list(quote_command_words(self._command_words()))
+        return f"[bold]{words[0]}[/] {' '.join(words[1:])}"
+
+
+class DarwinEditorUrl(BaseEditorURL):
+    """Editor command using URL scheme via 'open' command on Darwin."""
+
+    def _command_words(self) -> list[str]:
+        """Return the command as a list of words."""
+        return ["open", self.url]
+
+
+class WindowsEditorUrl(BaseEditorURL):
+    """Editor command using URL scheme via os.startfile on Windows."""
+
+    def run(self) -> None:
+        """Execute the os.startfile command."""
+        os.startfile(self.url)  # type: ignore[attr-defined]  # noqa: S606
+
+    def _command_words(self) -> list[str]:
+        """Return the command as a list of words."""
+        return ["start", self.url]
+
+
+class LinuxEditorUrl(BaseEditorURL):
+    """Editor command using URL scheme via 'xdg-open' on Linux."""
+
+    def _command_words(self) -> list[str]:
+        """Return the command as a list of words."""
+        return ["xdg-open", self.url]
+
+
+def _setup_editor_url() -> type[BaseEditorURL]:
+    if platform.system() == "Darwin":
+        return DarwinEditorUrl
+    if platform.system() == "Windows":
+        return WindowsEditorUrl
+    return LinuxEditorUrl
+
+
+EditorURL = _setup_editor_url()
 
 
 @dataclass
@@ -161,7 +201,7 @@ class VSCodeEditor(BaseEditor):
             args = [self.editor_path, *self.editor_args, "--goto", dest]
             return EditorSubprocess(args)
 
-        abs_path = Path(location.path).resolve(strict=True)
+        abs_path = Path(location.path).resolve()
         url = f"{self._url_scheme()}://file/{abs_path}:{location.row}"
         if location.column is not None:
             url += f":{location.column}"
@@ -297,12 +337,16 @@ def get_editor_command(editor: str, location: FileLocation) -> EditorCommand:
     Raises:
         UnsupportedEditorError: If editor is not supported
     """
-    # Parse editor command to extract base name and arguments
-    # First separate directory path from command to handle paths with spaces
+    # We want to handle paths with spaces, without escaping, that is why we use
+    # os.path.split instead of shlex.split. To be consistent, we assume that
+    # command arguments do not required quoting either, so we use str.split()
+    # instead of shlex.split(), which would seems more correct.
+
+    # First separate directory path from command, the path may contain spaces
     path_head, command_and_args = os.path.split(editor)
 
     # Split command and arguments
-    parts = shlex.split(command_and_args)
+    parts = command_and_args.split()
     editor_name = parts[0]
     editor_args = parts[1:]
     editor_path = os.path.join(path_head, editor_name)  # noqa: PTH118

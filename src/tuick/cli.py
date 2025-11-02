@@ -7,18 +7,24 @@ locations.
 
 import contextlib
 import os
-import re
+import shutil
 import socket
 import subprocess
 import sys
+import threading
 import typing
-
-if typing.TYPE_CHECKING:
-    from collections.abc import Iterable
+from pathlib import Path
 
 import typer
 
-from tuick.console import console, err_console
+import tuick.console
+from tuick.console import (
+    print_command,
+    print_error,
+    print_event,
+    print_verbose,
+    print_warning,
+)
 from tuick.editor import (
     UnsupportedEditorError,
     get_editor_command,
@@ -27,6 +33,7 @@ from tuick.editor import (
 from tuick.monitor import MonitorThread
 from tuick.parser import FileLocationNotFoundError, get_location, split_blocks
 from tuick.reload_socket import ReloadSocketServer, generate_api_key
+from tuick.shell import quote_command
 
 app = typer.Typer()
 
@@ -34,90 +41,74 @@ app = typer.Typer()
 # ruff: noqa: FBT001 FBT003 Typer API uses boolean arguments for flags
 # ruff: noqa: B008 function-call-in-default-argument
 
-# TODO: use watchexec to detect changes, and trigger fzf reload through socket
-
-# TODO: exit when command output is empty. We cannot do that within fzf,
-# because it has no event for empty input, just for zero matches.
-# We need a socket connection
-
-
-def quote_command(words: Iterable[str]) -> str:
-    """Shell quote words and join in a single command string."""
-    result: list[str] = []
-    first = True
-    for word in words:
-        result.append(_quote_word(word, first))
-        first = False
-    return " ".join(result)
-
-
-def _quote_word(word: str, first: bool) -> str:
-    if not _needs_quoting(word, first=first):
-        return word
-    if "'" not in word:
-        # That covers the empty case too
-        return f"'{word}'"
-    for char in '\\"$`':
-        word = word.replace(char, "\\" + char)
-    return f'"{word}"'
-
-
-def _needs_quoting(word: str, first: bool) -> bool:
-    if not word:
-        return True
-    if not re.match(r"^[a-zA-Z0-9._/\-:,@%+~=]+$", word):
-        return True
-    return (first and "=" in word[1:]) or word[0] == "~"
-
 
 @app.command()
-def main(
-    command: list[str] = typer.Argument(None),
+def main(  # noqa: PLR0913
+    command: list[str] = typer.Argument(default_factory=list),
     reload: bool = typer.Option(
-        False, "--reload", help="Run command and output blocks"
+        False, "--reload", help="Internal: run command and output blocks"
     ),
     select: str = typer.Option(
-        "", "--select", help="Open editor at error location"
+        "", "--select", help="Internal: open editor at error location"
     ),
     start: bool = typer.Option(
-        False, "--start", help="Notify fzf port to parent process"
+        False, "--start", help="Internal: notify fzf port to parent process"
+    ),
+    message: str = typer.Option(
+        "", "--message", help="Internal: log a message"
     ),
     verbose: bool = typer.Option(
         False, "-v", "--verbose", help="Show verbose output"
     ),
 ) -> None:
-    """Tuick: Text User Interface for Compilers and checKers."""
-    exclusive_options = sum([reload, bool(select), start])
-    if exclusive_options > 1:
-        err_console.print(
-            "[bold red]Error:[/] "
-            "[red]--reload, --select, and --start are mutually exclusive"
-        )
-        raise typer.Exit(1)
+    """Tuick: Text User Interface for Compilers and checkers."""
+    with tuick.console.setup_log_file():
+        if verbose:
+            base_cmd = Path(sys.argv[0]).name
+            print_event(quote_command([base_cmd, *sys.argv[1:]]))
 
-    if command is None:
-        command = []
+        exclusive_options = sum([reload, bool(select), start, bool(message)])
+        if exclusive_options > 1:
+            message = (
+                "Options --reload, --select, --start, and --message are"
+                " mutually exclusive"
+            )
+            print_error(None, message)
+            raise typer.Exit(1)
 
-    if reload:
-        reload_command(command)
-    elif select:
-        select_command(select, verbose=verbose)
-    elif start:
-        start_command()
-    else:
-        list_command(command, verbose=verbose)
+        if not exclusive_options and not command:
+            print_error(None, "No command specified")
+
+        if reload:
+            reload_command(command, verbose=verbose)
+        elif select:
+            select_command(select, verbose=verbose)
+        elif start:
+            start_command(verbose=verbose)
+        elif message:
+            message_command(message)
+        else:
+            list_command(command, verbose=verbose)
 
 
-def list_command(command: list[str], *, verbose: bool = False) -> None:
+def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa: C901, PLR0915
     """List errors from running COMMAND."""
+    # TODO: Fix PLR0915, too many statements
     myself = sys.argv[0]
+    # Shorten the command name if it is the same as the default
+    default: str | None = shutil.which(Path(myself).name)
+    if default and Path(default).resolve() == Path(myself).resolve():
+        myself = Path(myself).name
+
     verbose_flag = ["-v"] if verbose else []
     reload_cmd = quote_command(
-        [myself, "--reload", *verbose_flag, "--", *command]
+        [myself, *verbose_flag, "--reload", "--", *command]
     )
-    select_cmd = quote_command([myself, "--select", *verbose_flag])
-    start_cmd = quote_command([myself, "--start"])
+    select_cmd = quote_command([myself, *verbose_flag, "--select"])
+    start_cmd = quote_command([myself, *verbose_flag, "--start"])
+    message_command = quote_command([myself, "--message"])
     header = quote_command(command)
+    running_header = f"{header} Running..."
 
     with contextlib.ExitStack() as stack:
         # Create tuick reload coordination server
@@ -131,6 +122,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
 
         monitor = MonitorThread(
             reload_cmd,
+            running_header,
             reload_server,
             fzf_api_key,
             verbose=verbose,
@@ -145,6 +137,8 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
         env["TUICK_API_KEY"] = tuick_api_key
         env["FZF_API_KEY"] = fzf_api_key
 
+        if verbose:
+            print_command(command)
         with subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -163,40 +157,50 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
                 # No output, don't start fzf
                 return
 
+            def report_exit() -> None:
+                cmd_proc.wait()
+                args = "  Initial load command exit:", cmd_proc.returncode
+                print_verbose(*args)
+
+            if verbose:
+                threading.Thread(target=report_exit, daemon=True).start()
+
             # Have output, start fzf
+            def binding_verbose(
+                event: str,
+                message: str,
+                plus: bool = False,  # noqa: FBT002
+            ) -> list[str]:
+                if not verbose:
+                    return []
+                action = f"execute-silent({message_command} {message})"
+                return [f"{event}:{'+' if plus else ''}{action}"]
+
+            fzf_bindings = [
+                f"start:change-header({running_header})",
+                f"start:+execute-silent({start_cmd})",
+                f"load:change-header({header})",
+                *binding_verbose("load", "LOAD", plus=True),
+                f"enter,right:execute({select_cmd} {{}})",
+                f"r:change-header({running_header})",
+                *binding_verbose("r", "RELOAD", plus=True),
+                f"r:+reload({reload_cmd})",
+                "q:abort",
+                *binding_verbose("zero", "ZERO"),
+                "zero:+abort",
+                "space:down",
+                "backspace:up",
+            ]
             fzf_cmd = [
-                "fzf",
-                "--listen",
-                "--read0",
-                "--ansi",
-                "--no-sort",
-                "--reverse",
-                "--disabled",
-                "--color=dark",
-                "--highlight-line",
-                "--wrap",
-                "--no-input",
-                "--header-border",
-                "--track",
-                "--bind",
-                ",".join(
-                    [
-                        f"start:change-header({header} ⏳ Running...)"
-                        f"+execute-silent({start_cmd})",
-                        f"load:change-header({header})",
-                        f"enter,right:execute({select_cmd} {{}})",
-                        f"r:change-header({header} ⏳ Running...)"
-                        f"+reload({reload_cmd})",
-                        "q:abort",
-                        "space:down",
-                        "backspace:up",
-                        "zero:abort",
-                    ]
-                ),
+                *("fzf", "--listen", "--read0", "--track"),
+                *("--no-sort", "--reverse", "--header-border"),
+                *("--ansi", "--color=dark", "--highlight-line", "--wrap"),
+                *("--disabled", "--no-input", "--bind"),
+                ",".join(fzf_bindings),
             ]
 
             if verbose:
-                console.print(f"[dim]$ {quote_command(fzf_cmd)}[/]")
+                print_command(fzf_cmd)
 
             with subprocess.Popen(
                 fzf_cmd, stdin=subprocess.PIPE, text=True, env=env
@@ -215,30 +219,26 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
 
             if verbose:
                 if fzf_proc.returncode == 0:
-                    console.print("[dim]fzf exited normally (0)[/]")
+                    print_verbose("fzf exited normally (0)")
                 elif fzf_proc.returncode == 130:
-                    console.print("[dim]fzf aborted by user (130)[/]")
+                    print_verbose("fzf aborted by user (130)")
                 else:
-                    console.print(
-                        f"[yellow]fzf exited with "
-                        f"status {fzf_proc.returncode}[/]"
-                    )
+                    args = "fzf exited with status", fzf_proc.returncode
+                    print_warning(*args)
 
-            if fzf_proc.returncode not in [0, 130, None]:
+            if fzf_proc.returncode not in (0, 130):
                 # 130 means fzf was aborted with ctrl-C or ESC
                 sys.exit(fzf_proc.returncode)
 
 
-def _send_to_tuick_server(message: str, expected_response: str) -> None:
+def _send_to_tuick_server(message: str, expected: str) -> None:
     """Send authenticated message to tuick server and verify response."""
     tuick_port = os.environ.get("TUICK_PORT")
     tuick_api_key = os.environ.get("TUICK_API_KEY")
 
     if not tuick_port or not tuick_api_key:
-        err_console.print(
-            "[bold red]Error:[/] Missing environment variables: "
-            "TUICK_PORT or TUICK_API_KEY"
-        )
+        message = "Missing environment variable: TUICK_PORT or TUICK_API_KEY"
+        print_error(None, message)
         raise typer.Exit(1)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -246,17 +246,19 @@ def _send_to_tuick_server(message: str, expected_response: str) -> None:
         sock.sendall(f"secret: {tuick_api_key}\n{message}\n".encode())
         response = sock.recv(1024).decode().strip()
 
-    if response != expected_response:
-        err_console.print(f"[bold red]Error:[/] Server response: {response}")
+    if response != expected:
+        print_error(None, "Server response:", response)
         raise typer.Exit(1)
 
 
 def _run_command_and_stream_blocks(
-    command: list[str], output: typing.TextIO
+    command: list[str], output: typing.TextIO, *, verbose: bool = False
 ) -> None:
     """Run COMMAND with FORCE_COLOR=1 and stream null-separated blocks."""
     env = os.environ.copy()
     env["FORCE_COLOR"] = "1"
+    if verbose:
+        print_command(command)
     with subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -266,25 +268,29 @@ def _run_command_and_stream_blocks(
     ) as process:
         if process.stdout:
             output.writelines(split_blocks(process.stdout))
+    if verbose:
+        print_verbose("  Reload command exit:", process.returncode)
 
 
-def start_command() -> None:
+def start_command(*, verbose: bool = False) -> None:
     """Notify parent process of fzf port."""
     fzf_port = os.environ.get("FZF_PORT")
-
     if not fzf_port:
-        err_console.print(
-            "[bold red]Error:[/] Missing environment variable: FZF_PORT"
-        )
+        print_error(None, "Missing environment variable: FZF_PORT")
         raise typer.Exit(1)
-
     _send_to_tuick_server(f"fzf_port: {fzf_port}", "ok")
+    if verbose:
+        print_verbose("  fzf_port:", fzf_port)
 
 
-def reload_command(command: list[str]) -> None:
+def reload_command(command: list[str], *, verbose: bool = False) -> None:
     """Notify parent, wait for go, then run command and output blocks."""
-    _send_to_tuick_server("reload", "go")
-    _run_command_and_stream_blocks(command, sys.stdout)
+    try:
+        _send_to_tuick_server("reload", "go")
+        _run_command_and_stream_blocks(command, sys.stdout, verbose=verbose)
+    except Exception as error:
+        print_error("Reload error:", error)
+        raise
 
 
 def select_command(selection: str, *, verbose: bool = False) -> None:
@@ -292,37 +298,42 @@ def select_command(selection: str, *, verbose: bool = False) -> None:
     try:
         location = get_location(selection)
     except FileLocationNotFoundError:
-        console.print("[yellow]No location found")
         if verbose:
-            console.print(repr(selection))
+            print_warning("No location found:", repr(selection))
         return
 
     # Get editor from environment
     editor = get_editor_from_env()
     if editor is None:
-        err_console.print(
-            "[bold red]Error:[/] No editor configured. "
-            "Set EDITOR or VISUAL environment variable."
-        )
+        message = "No editor configured. Set EDITOR environment variable."
+        print_error(None, message)
         raise typer.Exit(1)
 
     # Build editor command
     try:
         editor_command = get_editor_command(editor, location)
-    except UnsupportedEditorError as e:
-        err_console.print(f"[bold red]Error:[/] {e}")
-        raise typer.Exit(1) from e
+    except UnsupportedEditorError as error:
+        print_error(None, error)
+        raise typer.Exit(1) from error
 
     # Display and execute command
     if verbose:
-        console.print(editor_command)
+        print_command(editor_command)
     try:
         editor_command.run()
-    except subprocess.CalledProcessError as e:
-        err_console.print(
-            f"[bold red]Error running editor (exit {e.returncode})"
-        )
-        raise typer.Exit(1) from e
+    except subprocess.CalledProcessError as error:
+        print_error(None, "Editor exit status:", error.returncode)
+        raise typer.Exit(1) from error
+
+
+def message_command(message: str) -> None:
+    """Print a message to the error console."""
+    if message == "RELOAD":
+        print_event("Manual reload")
+    elif message == "LOAD":
+        print_verbose("  [cyan]Loading complete")
+    elif message == "ZERO":
+        print_warning("  Reload produced no output")
 
 
 if __name__ == "__main__":

@@ -4,8 +4,9 @@ import io
 import socket
 import subprocess
 from io import StringIO
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any
-from unittest.mock import Mock, create_autospec, patch
+from unittest.mock import ANY, Mock, create_autospec, patch
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -25,7 +26,7 @@ def console_out():
     """Patch console with test console using StringIO (no colors)."""
     output = StringIO()
     test_console = Console(file=output, force_terminal=False)
-    with patch("tuick.cli.console", test_console):
+    with patch("tuick.console._console", test_console):
         yield output
 
 
@@ -160,45 +161,89 @@ def test_cli_reload_option() -> None:
             sock.sendall(f"secret: {api_key}\nshutdown\n".encode())
 
 
-def test_cli_select_option(console_out: StringIO) -> None:
-    """--select option opens editor at location and prints command."""
+def test_cli_select_plain(console_out: StringIO) -> None:
+    """--select option opens editor at location and prints nothing."""
     with (
         patch("tuick.cli.subprocess.run") as mock_run,
         patch("tuick.cli.get_editor_from_env", return_value="vi"),
     ):
         mock_run.return_value = create_autospec(
+            subprocess.CompletedProcess,
+            instance=True,
+        )
+        mock_run.return_value.returncode = 0
+        args = app, ["--select", "src/test.py:10:5: error: Test"]
+        result = runner.invoke(*args)
+        assert result.exit_code == 0
+        assert console_out.getvalue() == ""
+        command = ["vi", "+10", "+normal! 5l", "src/test.py"]
+        mock_run.assert_called_once_with(command, check=True)
+
+
+def test_cli_select_verbose(console_out: StringIO) -> None:
+    """--verbose --select prints the command to execute."""
+    with (
+        patch("tuick.cli.subprocess.run") as mock_run,
+        patch("tuick.cli.get_editor_from_env", return_value="vi"),
+        patch("sys.argv", ["tuick", "(mock argv)"]),
+    ):
+        mock_run.return_value = create_autospec(
             subprocess.CompletedProcess, instance=True
         )
         mock_run.return_value.returncode = 0
-        mock_run.return_value.stderr = ""
-        result = runner.invoke(
-            app, ["--verbose", "--select", "src/test.py:10:5: error: Test"]
-        )
+        args = app, ["--verbose", "--select", "src/test.py:10:5: error: Test"]
+        result = runner.invoke(*args)
         assert result.exit_code == 0
-        assert console_out.getvalue() == "vi +10 '+normal! 5l' src/test.py\n"
-        assert mock_run.call_args[0] == (
-            ["vi", "+10", "+normal! 5l", "src/test.py"],
+        assert console_out.getvalue() == (
+            "> tuick '(mock argv)'\n$ vi +10 '+normal! 5l' src/test.py\n"
         )
+        mock_run.assert_called_once()
+
+
+def test_cli_select_error(console_out: StringIO) -> None:
+    """--select prints a message if the editor exits with error."""
+    with (
+        patch("tuick.cli.subprocess.run") as mock_run,
+        patch("tuick.cli.get_editor_from_env", return_value="vi"),
+    ):
+        mock_run.side_effect = subprocess.CalledProcessError(
+            returncode=1, cmd="whatever"
+        )
+        mock_run.return_value = create_autospec(
+            subprocess.CompletedProcess, instance=True
+        )
+        mock_run.return_value.returncode = 1
+        args = app, ["--select", "src/test.py:10:5: error: Test"]
+        result = runner.invoke(*args)
+        assert result.exit_code == 1
+        mock_run.assert_called_once_with(ANY, check=True)
+        assert console_out.getvalue() == "Error: Editor exit status: 1\n"
 
 
 def test_cli_select_no_location_found(console_out: StringIO) -> None:
-    """--select with no location prints message and exits 0 (no-op)."""
+    """--select with no location does nothing."""
     with patch("tuick.cli.subprocess.run") as mock_run:
         result = runner.invoke(
             app, ["--select", "plain text without location"]
         )
         assert result.exit_code == 0
-        assert console_out.getvalue() == "No location found\n"
+        assert console_out.getvalue() == ""
         # Verify editor was not called
         mock_run.assert_not_called()
 
 
 def test_cli_select_verbose_no_location(console_out: StringIO) -> None:
-    """--select --verbose with no location prints repr of input."""
-    with patch("tuick.cli.subprocess.run") as mock_run:
+    """--verbose --select with no location prints a message with input."""
+    with (
+        patch("tuick.cli.subprocess.run") as mock_run,
+        patch("sys.argv", ["tuick", "(mock argv)"]),
+    ):
         result = runner.invoke(app, ["--select", "plain text", "--verbose"])
         assert result.exit_code == 0
-        assert console_out.getvalue() == "No location found\n'plain text'\n"
+        assert console_out.getvalue() == dedent("""\
+            > tuick '(mock argv)'
+            No location found: 'plain text'
+        """)
         # Verify editor was not called
         mock_run.assert_not_called()
 

@@ -9,14 +9,12 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from tuick.console import console
+from tuick.console import print_event, print_verbose
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from tuick.reload_socket import ReloadSocketServer
-
-# ruff: noqa: TRY003
 
 
 @dataclass
@@ -31,7 +29,7 @@ class MonitorChange:
         """Create a MonitorChange from a single watchexec output line."""
         text = line.removesuffix("\n")
         if ":" not in text:
-            raise ValueError(
+            raise ValueError(  # noqa: TRY003
                 f"Expected colon-separated change, received: {text!r}"
             )
         parts = text.split(":", maxsplit=1)
@@ -97,9 +95,11 @@ class FilesystemMonitor:
 class MonitorThread:
     """Thread that monitors filesystem and sends reload commands via HTTP."""
 
-    def __init__(
+    # TODO: Fix PLR0913, too many arguments
+    def __init__(  # noqa: PLR0913
         self,
         reload_cmd: str,
+        loading_header: str,
         reload_server: ReloadSocketServer,
         fzf_api_key: str,
         *,
@@ -109,6 +109,7 @@ class MonitorThread:
         """Initialize monitor thread."""
         self.path = path if path is not None else Path.cwd()
         self.reload_cmd = reload_cmd
+        self.loading_header = loading_header
         self.reload_server = reload_server
         self.fzf_api_key = fzf_api_key
         self.verbose = verbose
@@ -134,21 +135,22 @@ class MonitorThread:
 
         assert self.reload_server.fzf_port is not None
         fzf_url = f"http://127.0.0.1:{self.reload_server.fzf_port}"
-        body = f"reload:{self.reload_cmd}"
+        body = f"change-header({self.loading_header})+reload:{self.reload_cmd}"
         headers = {"X-Api-Key": self.fzf_api_key}
 
         if self.verbose:
-            console.print(f"[dim]POST {fzf_url}[/]")
-            console.print(f"[dim]  Body: {body!r}[/]")
+            print_event("Auto reload")
+            print_verbose("  [bold]POST", fzf_url)
+            print_verbose("    Body:", repr(body))
 
         response = requests.post(
             fzf_url, data=body, headers=headers, timeout=10
         )
 
         if self.verbose:
-            console.print(f"[dim]  Status: {response.status_code}[/]")
+            print_verbose("    Status:", response.status_code)
             if response.text:
-                console.print(f"[dim]  Response: {response.text!r}[/]")
+                print_verbose("    Response:", repr(response.text))
 
     def stop(self) -> None:
         """Stop monitoring thread."""

@@ -25,7 +25,6 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
 
     def handle(self) -> None:
         """Process single client connection with authentication."""
-        # TODO: Find type-safe solution to avoid cast
         server = cast("ReloadSocketServer", self.server)
 
         # Read authentication line

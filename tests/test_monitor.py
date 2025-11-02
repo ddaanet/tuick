@@ -90,6 +90,7 @@ def test_monitor_thread_sends_reload_to_socket(
     with patch("tuick.monitor.FilesystemMonitor", return_value=mock_monitor):
         monitor_thread = MonitorThread(
             reload_cmd,
+            "Running...",
             reload_server,
             fzf_api_key,
             path=tmp_path,
@@ -98,7 +99,7 @@ def test_monitor_thread_sends_reload_to_socket(
 
         try:
             body, headers = request_queue.get(timeout=1)
-            assert body == f"reload:{reload_cmd}"
+            assert body == f"change-header(Running...)+reload:{reload_cmd}"
             assert headers.get("X-Api-Key") == fzf_api_key
         finally:
             monitor_thread.stop()
