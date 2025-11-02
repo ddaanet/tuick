@@ -97,13 +97,25 @@ class BaseEditor:
         return editor_class
 
 
-class IdeaEditor(BaseEditor):
+class JetBrainsEditor(BaseEditor):
     """IntelliJ IDEA editor."""
 
     command_names = ("idea",)
 
     def get_command(self, location: FileLocation) -> EditorCommand:
         """Build IDEA URL scheme command."""
+        if "--wait" in self.editor_args:
+            position_args = ["--line", str(location.row)]
+            if location.column is not None:
+                position_args.extend(["--column", str(location.column)])
+            args = [
+                self.editor_path,
+                *self.editor_args,
+                *position_args,
+                location.path,
+            ]
+            return EditorSubprocess(args)
+
         abs_path = Path(location.path).resolve(strict=True)
         quoted_path = quote(str(abs_path), safe="")
         url = f"idea://open?file={quoted_path}&line={location.row}"
