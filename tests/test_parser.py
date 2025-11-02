@@ -190,7 +190,7 @@ ______________________ test_extract_search_card_no_salary _____________________
 >       result = extract_search_card(card)
                  ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_search.py:142:""",
+tests/test_search.py:142: """,
     """\
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 src/jobsearch/search.py:92: in extract_search_card
@@ -305,6 +305,7 @@ def test_split_blocks_pytest(blocks: list[str]) -> None:
             FileLocation("src/jobsearch/search_cli.py", 8, 1),
         ),
         (PYTEST_AUTO_BLOCKS[1], FileLocation("tests/test_search.py", 133)),
+        (PYTEST_AUTO_BLOCKS[2], FileLocation("tests/test_search.py", 142)),
         (PYTEST_SHORT_BLOCKS[1], FileLocation("tests/test_search.py", 133)),
         (
             PYTEST_LINE_BLOCKS[1],

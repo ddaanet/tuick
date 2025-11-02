@@ -68,7 +68,7 @@ LINE_REGEX = re.compile(
          (?::\d+:\d+)?  # Line and column of end
          :[ ].+         # Message
     """,
-    re.MULTILINE + re.VERBOSE,
+    re.VERBOSE,
 )
 MYPY_NOTE_REGEX = re.compile(
     r"""^[^\s:]       # File name with no colon, not indented
@@ -88,7 +88,19 @@ PYTEST_SEP_REGEX = re.compile(
     """,
     re.VERBOSE,
 )
-RUFF_REGEX = re.compile(
+
+LINE_LOCATION_REGEX = re.compile(
+    r"""^([^\s:]        # File name, with no colon, not indented
+          [^:\n]*       # File name may contain spaces after first char
+          :\d+          # Line number
+          (?::\d+)?     # Column number
+         )
+         (?::\d+:\d+)?  # Line and column of end
+         :[ ]           # Final colon and space
+    """,
+    re.MULTILINE + re.VERBOSE,
+)
+RUFF_LOCATION_REGEX = re.compile(
     r"""^[ ]*-->[ ]  # Arrow marker, preceded by number column width padding
         ([^:]+       # File name
         :\d+         # Line number
@@ -97,6 +109,7 @@ RUFF_REGEX = re.compile(
     """,
     re.MULTILINE + re.VERBOSE,
 )
+
 ANSI_REGEX = re.compile(
     r"""
     \x1B                    # ESC character (0x1B, decimal 27)
@@ -297,9 +310,9 @@ def get_location(selection: str) -> FileLocation:
         FileLocationNotFoundError: If location pattern not found
     """
     selection = strip_ansi(selection)
-    match = re.search(LINE_REGEX, selection)
+    match = re.search(LINE_LOCATION_REGEX, selection)
     if match is None:
-        match = re.search(RUFF_REGEX, selection)
+        match = re.search(RUFF_LOCATION_REGEX, selection)
     if match is None:
         raise FileLocationNotFoundError(selection)
 
