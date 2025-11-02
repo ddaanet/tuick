@@ -7,7 +7,7 @@ locations.
 
 import contextlib
 import os
-import shlex
+import re
 import socket
 import subprocess
 import sys
@@ -43,7 +43,31 @@ app = typer.Typer()
 
 def quote_command(words: Iterable[str]) -> str:
     """Shell quote words and join in a single command string."""
-    return " ".join(shlex.quote(x) for x in words)
+    result: list[str] = []
+    first = True
+    for word in words:
+        result.append(_quote_word(word, first))
+        first = False
+    return " ".join(result)
+
+
+def _quote_word(word: str, first: bool) -> str:
+    if not _needs_quoting(word, first=first):
+        return word
+    if "'" not in word:
+        # That covers the empty case too
+        return f"'{word}'"
+    for char in '\\"$`':
+        word = word.replace(char, "\\" + char)
+    return f'"{word}"'
+
+
+def _needs_quoting(word: str, first: bool) -> bool:
+    if not word:
+        return True
+    if not re.match(r"^[a-zA-Z0-9._/\-:,@%+~=]+$", word):
+        return True
+    return (first and "=" in word[1:]) or word[0] == "~"
 
 
 @app.command()
