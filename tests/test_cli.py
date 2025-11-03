@@ -16,7 +16,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from tuick.cli import app
-from tuick.reload_socket import ReloadSocketServer, generate_api_key
+from tuick.reload_socket import ReloadSocketServer
 
 runner = CliRunner()
 
@@ -125,8 +125,8 @@ def test_cli_reload_option() -> None:
     sequence: list[str] = []
 
     # Create reload server with mock cmd_proc
-    api_key = generate_api_key()
-    server = ReloadSocketServer(api_key)
+    server = ReloadSocketServer()
+    api_key = server.get_server_info().api_key
     mock_cmd_proc = Mock(spec=subprocess.Popen)
     mock_cmd_proc.poll.return_value = None  # Still running
     mock_cmd_proc.terminate.side_effect = track(sequence, "terminate")

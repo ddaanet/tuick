@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from tuick.reload_socket import ReloadSocketServer, generate_api_key
+from tuick.reload_socket import ReloadSocketServer
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -33,8 +33,8 @@ class ServerFixture:
 @pytest.fixture
 def server_with_key() -> Iterator[ServerFixture]:
     """Create server with API key and return fixture."""
-    api_key = generate_api_key()
-    server = ReloadSocketServer(api_key)
+    server = ReloadSocketServer()
+    api_key = server.get_server_info().api_key
     server.start()
     fixture = ServerFixture(server, api_key, server.server_address[1])
 

@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tuick.monitor import FilesystemMonitor, MonitorEvent, MonitorThread
-from tuick.reload_socket import ReloadSocketServer, generate_api_key
+from tuick.reload_socket import ReloadSocketServer
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -75,11 +75,9 @@ def test_monitor_thread_sends_reload_to_socket(
     """MonitorThread sends POST reload(command) to fzf port on file change."""
     port, request_queue = http_socket
     reload_cmd = "ruff check src/"
-    fzf_api_key = generate_api_key()
 
     # Create real reload_server and set fzf_port
-    tuick_api_key = generate_api_key()
-    reload_server = ReloadSocketServer(tuick_api_key)
+    reload_server = ReloadSocketServer()
     reload_server.fzf_port = port
     reload_server.fzf_port_ready.set()
 
@@ -89,12 +87,9 @@ def test_monitor_thread_sends_reload_to_socket(
 
     with patch("tuick.monitor.FilesystemMonitor", return_value=mock_monitor):
         monitor_thread = MonitorThread(
-            reload_cmd,
-            "Running...",
-            reload_server,
-            fzf_api_key,
-            path=tmp_path,
+            reload_cmd, "Running...", reload_server, path=tmp_path
         )
+        fzf_api_key = monitor_thread.fzf_api_key
         monitor_thread.start()
 
         try:

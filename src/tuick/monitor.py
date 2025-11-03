@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import requests
 
 from tuick.console import print_event, print_verbose
+from tuick.reload_socket import generate_api_key
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -95,13 +96,11 @@ class FilesystemMonitor:
 class MonitorThread:
     """Thread that monitors filesystem and sends reload commands via HTTP."""
 
-    # TODO: Fix PLR0913, too many arguments
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         reload_cmd: str,
         loading_header: str,
         reload_server: ReloadSocketServer,
-        fzf_api_key: str,
         *,
         path: Path | None = None,
         verbose: bool = False,
@@ -111,7 +110,7 @@ class MonitorThread:
         self.reload_cmd = reload_cmd
         self.loading_header = loading_header
         self.reload_server = reload_server
-        self.fzf_api_key = fzf_api_key
+        self.fzf_api_key = generate_api_key()
         self.verbose = verbose
         self._monitor: FilesystemMonitor | None = None
         self._thread: threading.Thread | None = None

@@ -4,6 +4,7 @@ import secrets
 import socketserver
 import string
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -76,14 +77,10 @@ class ReloadSocketServer(socketserver.TCPServer):
 
     allow_reuse_address = True
 
-    def __init__(self, api_key: str) -> None:
-        """Initialize server on dynamic localhost port.
-
-        Args:
-            api_key: Required authentication token for clients
-        """
+    def __init__(self) -> None:
+        """Initialize server on dynamic localhost port."""
         super().__init__(("127.0.0.1", 0), ReloadRequestHandler)
-        self.api_key = api_key
+        self.api_key = generate_api_key()
         self.cmd_proc: subprocess.Popen[str] | None = None
         self.fzf_port: int | None = None
         self.fzf_port_ready = threading.Event()
@@ -101,3 +98,18 @@ class ReloadSocketServer(socketserver.TCPServer):
             target=self.serve_until_shutdown, daemon=True
         )
         self._thread.start()
+
+    def get_server_info(self) -> TuickServerInfo:
+        """Get information needed to connect to the tuick server."""
+        return TuickServerInfo(
+            port=self.server_address[1],
+            api_key=self.api_key,
+        )
+
+
+@dataclass
+class TuickServerInfo:
+    """Information needed to connect to the tuick server."""
+
+    port: int
+    api_key: str

@@ -14,6 +14,7 @@ import sys
 import threading
 import typing
 from pathlib import Path
+from subprocess import PIPE, STDOUT
 
 import typer
 
@@ -30,9 +31,10 @@ from tuick.editor import (
     get_editor_command,
     get_editor_from_env,
 )
+from tuick.fzf import FzfUserInterface, open_fzf_process
 from tuick.monitor import MonitorThread
 from tuick.parser import FileLocationNotFoundError, get_location, split_blocks
-from tuick.reload_socket import ReloadSocketServer, generate_api_key
+from tuick.reload_socket import ReloadSocketServer
 from tuick.shell import quote_command
 
 app = typer.Typer()
@@ -91,144 +93,98 @@ def main(  # noqa: PLR0913
             list_command(command, verbose=verbose)
 
 
-def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa: C901, PLR0915
-    """List errors from running COMMAND."""
-    # TODO: Fix PLR0915, too many statements
-    myself = sys.argv[0]
-    # Shorten the command name if it is the same as the default
-    default: str | None = shutil.which(Path(myself).name)
-    if default and Path(default).resolve() == Path(myself).resolve():
-        myself = Path(myself).name
+class CallbackCommands:
+    """Utility class for generating CLI callback commands."""
 
-    verbose_flag = ["-v"] if verbose else []
-    reload_cmd = quote_command(
-        [myself, *verbose_flag, "--reload", "--", *command]
-    )
-    select_cmd = quote_command([myself, *verbose_flag, "--select"])
-    start_cmd = quote_command([myself, *verbose_flag, "--start"])
-    message_command = quote_command([myself, "--message"])
-    header = quote_command(command)
-    running_header = f"{header} Running..."
+    def __init__(self, command: list[str], *, verbose: bool) -> None:
+        """Initialize callback commands."""
+        # Shorten the command name if it is the same as the default
+        myself = sys.argv[0]
+        default: str | None = shutil.which(Path(myself).name)
+        if default and Path(default).resolve() == Path(myself).resolve():
+            myself = Path(myself).name
+
+        verbose_flag = ["-v"] if verbose else []
+
+        # Used by MonitorThread and fzf
+        reload_words = [myself, *verbose_flag, "--reload", "--", *command]
+        self.reload_command = quote_command(reload_words)
+
+        # Used only by fzf
+        self.start_command = quote_command([myself, *verbose_flag, "--start"])
+        self.select_prefix = quote_command([myself, *verbose_flag, "--select"])
+        self.message_prefix = quote_command([myself, "--message"])
+
+
+def list_command(command: list[str], *, verbose: bool = False) -> None:
+    """List errors from running COMMAND."""
+    callbacks = CallbackCommands(command, verbose=verbose)
+    user_interface = FzfUserInterface(command)
 
     with contextlib.ExitStack() as stack:
         # Create tuick reload coordination server
-        tuick_api_key = generate_api_key()
-        reload_server = ReloadSocketServer(tuick_api_key)
+        reload_server = ReloadSocketServer()
         reload_server.start()
-        tuick_port = reload_server.server_address[1]
-
-        # Generate fzf API key for monitor thread
-        fzf_api_key = generate_api_key()
 
         monitor = MonitorThread(
-            reload_cmd,
-            running_header,
+            callbacks.reload_command,
+            user_interface.running_header,
             reload_server,
-            fzf_api_key,
             verbose=verbose,
         )
+        if verbose:
+            print_verbose("FZF_API_KEY:", monitor.fzf_api_key)
         monitor.start()
         stack.callback(monitor.stop)
 
         # Run command and stream to fzf stdin
         env = os.environ.copy()
         env["FORCE_COLOR"] = "1"
-        env["TUICK_PORT"] = str(tuick_port)
-        env["TUICK_API_KEY"] = tuick_api_key
-        env["FZF_API_KEY"] = fzf_api_key
-
         if verbose:
             print_command(command)
-        with subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=env,
-        ) as cmd_proc:
-            reload_server.cmd_proc = cmd_proc
-            # Read first chunk to check if there's any output
-            assert cmd_proc.stdout is not None
-            chunks = split_blocks(cmd_proc.stdout)
-            first_chunk = None
-            try:
-                first_chunk = next(chunks)
-            except StopIteration:
-                # No output, don't start fzf
-                return
+        cmd_proc = subprocess.Popen(
+            command, stdout=PIPE, stderr=STDOUT, text=True, env=env
+        )
+        stack.enter_context(cmd_proc)
+        reload_server.cmd_proc = cmd_proc
 
-            def report_exit() -> None:
-                cmd_proc.wait()
-                args = "  Initial load command exit:", cmd_proc.returncode
+        assert cmd_proc.stdout is not None
+        chunks = split_blocks(cmd_proc.stdout)
+
+        def wait_initial_command() -> None:
+            cmd_proc.wait()
+            if verbose:
+                args = "  Initial command exit:", cmd_proc.returncode
                 print_verbose(*args)
 
-            if verbose:
-                threading.Thread(target=report_exit, daemon=True).start()
+        try:
+            # Read first chunk to check if there's any output
+            first_chunk = next(chunks)
+        except StopIteration:
+            # No output, don't start fzf
+            wait_initial_command()
+            return
 
-            # Have output, start fzf
-            def binding_verbose(
-                event: str,
-                message: str,
-                plus: bool = False,  # noqa: FBT002
-            ) -> list[str]:
-                if not verbose:
-                    return []
-                action = f"execute-silent({message_command} {message})"
-                return [f"{event}:{'+' if plus else ''}{action}"]
+        threading.Thread(target=wait_initial_command, daemon=True).start()
 
-            fzf_bindings = [
-                f"start:change-header({running_header})",
-                f"start:+execute-silent({start_cmd})",
-                f"load:change-header({header})",
-                *binding_verbose("load", "LOAD", plus=True),
-                f"enter,right:execute({select_cmd} {{}})",
-                f"r:change-header({running_header})",
-                *binding_verbose("r", "RELOAD", plus=True),
-                f"r:+reload({reload_cmd})",
-                "q:abort",
-                *binding_verbose("zero", "ZERO"),
-                "zero:+abort",
-                "space:down",
-                "backspace:up",
-            ]
-            fzf_cmd = [
-                *("fzf", "--listen", "--read0", "--track"),
-                *("--no-sort", "--reverse", "--header-border"),
-                *("--ansi", "--color=dark", "--highlight-line", "--wrap"),
-                *("--disabled", "--no-input", "--bind"),
-                ",".join(fzf_bindings),
-            ]
+        with open_fzf_process(
+            callbacks,
+            user_interface,
+            reload_server.get_server_info(),
+            monitor.fzf_api_key,
+            verbose=verbose,
+        ) as fzf_proc:
+            assert fzf_proc.stdin is not None
 
-            if verbose:
-                print_command(fzf_cmd)
+            # Write blocks to fzf stdin
+            fzf_proc.stdin.write(first_chunk)
+            for chunk in chunks:
+                fzf_proc.stdin.write(chunk)
+            fzf_proc.stdin.close()
 
-            with subprocess.Popen(
-                fzf_cmd, stdin=subprocess.PIPE, text=True, env=env
-            ) as fzf_proc:
-                if fzf_proc.stdin is None:
-                    return
-
-                # Write first chunk
-                fzf_proc.stdin.write(first_chunk)
-
-                # Stream remaining chunks
-                for chunk in chunks:
-                    fzf_proc.stdin.write(chunk)
-
-                fzf_proc.stdin.close()
-
-            if verbose:
-                if fzf_proc.returncode == 0:
-                    print_verbose("fzf exited normally (0)")
-                elif fzf_proc.returncode == 130:
-                    print_verbose("fzf aborted by user (130)")
-                else:
-                    args = "fzf exited with status", fzf_proc.returncode
-                    print_warning(*args)
-
-            if fzf_proc.returncode not in (0, 130):
-                # 130 means fzf was aborted with ctrl-C or ESC
-                sys.exit(fzf_proc.returncode)
+        if fzf_proc.returncode not in (0, 130):
+            # 130 means fzf was aborted with ctrl-C or ESC
+            sys.exit(fzf_proc.returncode)
 
 
 def _send_to_tuick_server(message: str, expected: str) -> None:
