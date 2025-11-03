@@ -5,7 +5,7 @@ import subprocess
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from tuick.console import print_command, print_verbose, print_warning
+from tuick.console import print_command, print_error, print_success
 from tuick.shell import quote_command
 
 if TYPE_CHECKING:
@@ -13,12 +13,6 @@ if TYPE_CHECKING:
 
     from tuick.cli import CallbackCommands
     from tuick.reload_socket import TuickServerInfo
-
-
-# tuick_port: reload server config
-# tuick_api_key: reload server config
-
-# fzf_api_key: monitor thread config
 
 
 class FzfUserInterface:
@@ -66,7 +60,7 @@ def open_fzf_process(
         f"r:+reload({callbacks.reload_command})",
         "q:abort",
         *binding_verbose("zero", "ZERO"),
-        "zero:+abort",
+        "zero:+accept",
         "space:down",
         "backspace:up",
     ]
@@ -87,10 +81,21 @@ def open_fzf_process(
         yield fzf_proc
 
     if verbose:
-        if fzf_proc.returncode == 0:
-            print_verbose("fzf exited normally (0)")
-        elif fzf_proc.returncode == 130:
-            print_verbose("fzf aborted by user (130)")
-        else:
-            args = "fzf exited with status", fzf_proc.returncode
-            print_warning(*args)
+        _print_fzf_exit(fzf_proc.returncode)
+
+
+def _print_fzf_exit(returncode: int) -> None:
+    if returncode == 0:
+        print_success("[bold]fzf:[/] normal exit (0)")
+    elif returncode == 1:
+        print_success("[bold]fzf:[/] no match (1)")
+    elif returncode == 2:
+        print_error("fzf:", "error (2)")
+    elif returncode == 126:
+        print_error("fzf:", "become command denied (126)")
+    elif returncode == 127:
+        print_error("fzf:", "become command not found (127)")
+    elif returncode == 130:
+        print_success("[bold]fzf:[/] aborted by user (130)")
+    else:
+        print_error("fzf:", "exited with status", returncode)

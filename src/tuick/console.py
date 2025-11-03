@@ -74,6 +74,12 @@ def _style_shell_word(word: str, *, first: bool) -> str:
     return word
 
 
+def print_success(*args: Any) -> None:  # noqa: ANN401
+    """Print a success message."""
+    _console.print(*args, style="blue")
+    _console.file.flush()
+
+
 def print_warning(*args: Any) -> None:  # noqa: ANN401
     """Print a warning message."""
     _console.print(*args, style="yellow")
