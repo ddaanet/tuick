@@ -1,14 +1,17 @@
 """Tests for the parser module."""
 
+from unittest.mock import patch
 import pytest
 
 from tuick.parser import (
+    BlockSplitter,
     FileLocation,
     LineType,
     classify_line,
     extract_location_str,
     get_location,
     split_blocks,
+    strip_ansi,
 )
 
 
@@ -270,9 +273,31 @@ FAILED tests/test_search.py::test_extract_search_card_no_salary - jobsearch....
 ========================= 2 failed, 32 passed in 4.93s ====================""",
 ]
 
+# Interesting edge case, the assert report contains something that looks like a
+# location, and the line starts with a non-whitespace, so naively matching for
+# lines that look like locations succeeds but should not. In addition, the text
+# may contain ANSI escape codes.
+PYTEST_TRICKY_BLOCKS = [
+    "============================ FAILURES =============================",
+    """\
+\x1b[31m\x1b[1m_______________ test_cli_reload_option _______________\x1b[0m
+\x1b[1m\x1b[31mtests/test_cli.py\x1b[0m:142: in test_cli_reload_option
+    \x1b[0m\x1b[94massert\x1b[39;49;00m result.stdout == \
+\x1b[33m"\x1b[39;49;00m\x1b[33msrc/test.py:1: error: Test\
+\x1b[39;49;00m\x1b[33m"\x1b[39;49;00m\x1b[90m\x1b[39;49;00m
+\x1b[1m\x1b[31mE   AssertionError: assert equals failed\x1b[0m
+\x1b[1m\x1b[31mE     \x1b[m\x1b[1;31m''\x1b[m                            \
+\x1b[1;32m'src/test.py:1: error: Test'\x1b[m\x1b[0m""",
+    "\x1b[31m\x1b[1m___________ test_cli_select_verbose ____________\x1b[0m",
+]
+
 
 @pytest.mark.parametrize(
-    "blocks", [PYTEST_AUTO_BLOCKS, PYTEST_SHORT_BLOCKS, PYTEST_LINE_BLOCKS]
+    "blocks",
+    [
+        *(PYTEST_AUTO_BLOCKS, PYTEST_SHORT_BLOCKS),
+        *(PYTEST_LINE_BLOCKS, PYTEST_TRICKY_BLOCKS),
+    ],
 )
 def test_split_blocks_pytest(blocks: list[str]) -> None:
     """Test split_blocks on Pytest auto traceback format."""
@@ -323,7 +348,19 @@ def test_get_location(block: str, expected: FileLocation) -> None:
 def test_classify_line_with_ansi() -> None:
     """ANSI codes are removed before matching."""
     line = "src/test.py:42:\x1b[31m error: Type error\x1b[0m"
-    assert classify_line(line) == LineType.LOCATION
+    line_type: LineType | None = None
+
+    def classify_line_wrapper(line: str) -> LineType:
+        nonlocal line_type
+        return (line_type := classify_line(line))
+
+    with patch(
+        "tuick.parser.classify_line", wraps=classify_line_wrapper
+    ) as mock_classify_line:
+        splitter = BlockSplitter()
+        _ = list(splitter.process_line(line))
+    mock_classify_line.assert_called_once_with(strip_ansi(line))
+    assert line_type == LineType.LOCATION
 
 
 def test_extract_location_str_with_ansi() -> None:

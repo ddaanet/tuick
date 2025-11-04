@@ -149,7 +149,6 @@ def strip_ansi(text: str) -> str:
 
 def classify_line(text: str) -> LineType:
     """Classify a line by its type for block splitting."""
-    text = strip_ansi(text)
     if not text:
         return LineType.BLANK
     if re.match(MYPY_NOTE_REGEX, text):
@@ -189,10 +188,11 @@ class BlockSplitter:
 
     def process_line(self, line: str) -> Iterator[str]:
         """Process a line and yield output chunks."""
-        text, trailing_nl = (
+        raw_text, trailing_nl = (
             line.removesuffix("\n"),
             "\n" if line.endswith("\n") else "",
         )
+        text = strip_ansi(raw_text)
         line_type = classify_line(text)
 
         if line_type == LineType.BLANK:
@@ -218,12 +218,12 @@ class BlockSplitter:
 
         if self.pending_nl:
             yield self.pending_nl
-        yield text
+        yield raw_text
         self.pending_nl = trailing_nl
 
         self._update_state(line_type, text)
 
-    def _should_start_new_block(self, line_type: LineType, text: str) -> bool:
+    def _should_start_new_block(self, line_type: LineType, text: str) -> bool:  # noqa: PLR0911
         """Check if this line should start a new block."""
         if line_type in (LineType.NOTE, LineType.SEPARATOR):
             return True
@@ -239,6 +239,9 @@ class BlockSplitter:
                 return self.note_path != current_path
             if self.state == State.SUMMARY:
                 return True
+            if self.state == State.PYTEST_BLOCK and text.startswith("E "):
+                # Looks like a location, but it's a failure message
+                return False
             return (
                 self.prev_location is not None
                 and current_location != self.prev_location
