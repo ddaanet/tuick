@@ -67,7 +67,7 @@ run-dev := "uv run --dev"
 # Run test suite
 [group('dev')]
 test *ARGS: fail_if_claudecode
-    uv run --dev pytest --no-header {{ ARGS }}
+    uv run --dev pytest --no-header --tb=short {{ ARGS }}
 
 # Run test suite, with less output
 [group('agent')]
@@ -102,7 +102,7 @@ tuick: fail_if_claudecode compile
     && uv run --dev docformatter --in-place {{ python_dirs }}
     uv run --dev tuick -- ruff check --quiet {{ python_dirs }}
     uv run --dev tuick -- dmypy check {{ python_dirs }}
-    uv run --dev tuick -- pytest --no-header
+    uv run --dev tuick -- pytest --tb=short --no-header
 
 # Report FIXME, TODO, XXX, HACK comments
 [group('dev')]
