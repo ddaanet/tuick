@@ -14,7 +14,17 @@ install:
 
 # Development workflow: check, test
 [group('dev')]
-dev: fail_if_claudecode compile check test
+dev: fail_if_claudecode compile
+    #!/usr/bin/env bash -euo pipefail
+    show () { echo -e "{{ style('command') }}$*{{ NORMAL }}" >&2; }
+    safe () { show "$@"; "$@" || status=false; }
+    safe uv run --dev ruff format --check {{ python_dirs }}
+    safe uv run --dev ruff format --check {{ python_dirs }}
+    safe uv run --dev docformatter --check {{ python_dirs }}
+    safe uv run --dev ruff check --quiet {{ python_dirs }}
+    safe uv run --dev dmypy check {{ python_dirs }}
+    safe uv run --dev pytest --no-header --tb=short
+    ${status:-true}
 
 # Agent workflow: check, test with minimal output
 [group('agent')]
@@ -72,10 +82,14 @@ agent-test *ARGS:
 # Static code analysis and style checks
 [group('dev')]
 check: fail_if_claudecode compile
-    uv run --dev ruff format --check {{ python_dirs }}
-    uv run --dev docformatter --check {{ python_dirs }}
-    uv run --dev ruff check --quiet {{ python_dirs }}
-    uv run --dev dmypy check {{ python_dirs }}
+    #!/usr/bin/env bash -euo pipefail
+    show () { echo -e "{{ style('command') }}$*{{ NORMAL }}" >&2; }
+    safe () { show "$@"; "$@" || status=false; }
+    safe uv run --dev ruff format --check {{ python_dirs }}
+    safe uv run --dev docformatter --check {{ python_dirs }}
+    safe uv run --dev ruff check --quiet {{ python_dirs }}
+    safe uv run --dev dmypy check {{ python_dirs }}
+    ${status:-true}
 
 # Interactive code analysis and style checks
 [group('dev')]
