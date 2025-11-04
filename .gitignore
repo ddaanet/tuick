@@ -1,4 +1,5 @@
 # Dotfiles
+/.aider.*
 /.dmypy.json
 /.envrc
 /.idea/
@@ -10,10 +11,11 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+/*.egg-info
 /build/
 /dist/
 /wheels/
-/*.egg-info
 
 # mypyc leaves .so files in src
 /src/**/*.so
+.aider*
