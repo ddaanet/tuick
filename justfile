@@ -74,8 +74,7 @@ test *ARGS: fail_if_claudecode
 [no-exit-message]
 agent-test *ARGS:
     #!/usr/bin/env bash -euo pipefail
-    fail_with () { local s=$?; "$@"; return $s; }
-    quietly () { output=$("$@" >&1) || fail_with echo "$output"; }
+    quietly () { out=$("$@" >&1) || { local s=$?; echo "$out"; return $s; }; }
     quietly uv run --dev pytest --no-header --quiet --tb=short -p no:icdiff {{ ARGS }}
     if ! {{ is_dependency() }}; then echo OK; fi
 
@@ -121,7 +120,7 @@ agent-check: agent-compile
     @uv run --dev docformatter --check {{ python_dirs }}
     @uv run --dev ruff check --quiet {{ concise }} {{ python_dirs }}
     @uv run --dev dmypy check {{ python_dirs }}
-    @if ! {{ is_dependency() }}; then echo OK; fi
+    @{{ is_dependency() }} || echo OK
 
 # Ruff auto-fix
 [group('dev')]
