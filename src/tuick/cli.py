@@ -184,13 +184,19 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
 
             # Write blocks to fzf stdin
             fzf_proc.stdin.write(first_chunk)
+            fzf_proc.stdin.flush()
             for chunk in chunks:
                 fzf_proc.stdin.write(chunk)
+                # Current split_blocks implementation sometimes yields single
+                # chars, like nulls and newlines. No need to flush those
+                # because there is nothing to display
+                if len(chunk) > 1:
+                    fzf_proc.stdin.flush()
             fzf_proc.stdin.close()
 
-        if fzf_proc.returncode not in (0, 130):
-            # 130 means fzf was aborted with ctrl-C or ESC
-            sys.exit(fzf_proc.returncode)
+        if fzf_proc.returncode not in (0, 1, 130):
+            # 0 normal exit, 1 no match, 130 user abort
+            sys.exit(1)
 
 
 def _send_to_tuick_server(message: str, expected: str) -> None:
@@ -228,8 +234,14 @@ def _run_command_and_stream_blocks(
         text=True,
         env=env,
     ) as process:
-        if process.stdout:
-            output.writelines(split_blocks(process.stdout))
+        assert process.stdout
+        for block in split_blocks(process.stdout):
+            output.write(block)
+            if len(block) > 1:
+                # Current split_blocks implementation sometimes yields single
+                # chars, like nulls and newlines. No need to flush those
+                # because there is nothing to display
+                output.flush()
     if verbose:
         print_verbose("  Reload command exit:", process.returncode)
 
