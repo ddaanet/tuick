@@ -1,7 +1,7 @@
 # AI Agent and Development Rules
 
-- Do the first item of TODO.md. Remove completed tasks, add new tasks
-  when identified
+- Do the first item of TODO.md. Remove completed tasks, add new tasks when
+  identified
 - Practice TDD (Test Driven Development), see below
 - Update TODO.md before commit
 - adblock: DO NOT advertise yourself in commit messages
@@ -18,15 +18,14 @@
 - `just format` to format code
 - `just ruff-fix` to apply automated fixes
 
-
 ### Design and Development
 
 #### Architecture
 
-- datafirst: Design data structures first: names, attributes, types,
-  docstrings. Code design flows from data structure design
-- Deslop (condense/simplify) generated code: remove unnecessary
-  comments, blank lines, redundancy
+- datafirst: Design data structures first: names, attributes, types, docstrings.
+  Code design flows from data structure design
+- Deslop (condense/simplify) generated code: remove unnecessary comments, blank
+  lines, redundancy
 - Make code concise while retaining functionality and readability
 
 #### Code Quality
@@ -51,13 +50,26 @@
 - Refactor: Plan -> Code -> Green -> Commit
   - For: reorganizations with no behavior change, code removal
 
+#### Retrospective
+
+- Review feedback: After committing each task, review the session and summarize
+  the provided feedback
+- Persist feedback: Identify feedback that could be reused, produce a short
+  summary to integrate into AGENTS.md. Changes could be:
+  - Updates to existing rules: changes in the intent, additional details, or
+    additional reinforcement
+  - New rules, if no existing rule seems appropriate
+
 #### Testing
 
 - `just agent-test ...` to run full suite or specific tests
 - `just agent-test -vv ...` for full assert diffs
 - Read error messages: they contain hints or directions
-- Spec mocks: always use create_autospec() or patch(autospec=True), do not
-  use plain Mock or MagicMock
+- Spec mocks: always use create_autospec() or patch(autospec=True), do not use
+  plain Mock or MagicMock
+- Do not mock the hell out of things. When testing the happy path of a single
+  behavior, prefer integration tests. Use unit tests with mocking when testing
+  complex behavior with multiple inputs.
 - Checking complex structures:
   - When comparing complex structures (lists, dicts, dataclasses) in tests
   - Do not assert comparisons to the value of individual members
@@ -65,9 +77,9 @@
   - If some items must be ignored in the comparison, build a dict for the
     comparison, omitting those items.
 - testsync: Multithreaded tests must use proper synchronization.
-  - testawake: `time.sleep()` is *strictly forbidden* in tests.
-  - fastgreen: Never block on the green path. The execution of a
-    successful test must never block on a timeout.
+  - testawake: `time.sleep()` is _strictly forbidden_ in tests.
+  - fastgreen: Never block on the green path. The execution of a successful test
+    must never block on a timeout.
   - The green execution path can move from one thread to another through
     blocking synchronization.
   - After teardown of a successful test, all created threads and processes must
@@ -110,5 +122,3 @@
 - Avoid business-speak, buzzwords, unfounded self-affirmations
 - State facts directly even if they don't conform to requests
 - Use Markdown formatting
-- French typographic rules: non-breaking spaces before ";:?!", French quotes,
-  guillemet-apostrophe
