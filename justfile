@@ -125,7 +125,7 @@ agent-check: agent-compile
 # Ruff auto-fix
 [group('dev')]
 ruff-fix *ARGS:
-    uv run --dev ruff check --quiet --fix {{ ARGS }} {{ python_dirs }}
+    uv run --dev ruff check --quiet {{ concise }} --fix {{ ARGS }} {{ python_dirs }}
 
 # Reformat code, fail if formatting errors remain
 [group('dev')]

@@ -1,47 +1,12 @@
 """Tests for cross-platform reload socket IPC."""
 
-from io import StringIO
 import socket
 import subprocess
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
-import pytest
-
-from tuick.reload_socket import ReloadSocketServer
-
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-
-@dataclass
-class ServerFixture:
-    """Test fixture data for server with API key."""
-
-    server: ReloadSocketServer
-    api_key: str
-    port: int
-
-    def send(self, message: str) -> str:
-        """Send authenticated message to server and return response."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect(("127.0.0.1", self.port))
-            sock.sendall(f"secret: {self.api_key}\n{message}\n".encode())
-            return sock.recv(1024).decode().strip()
-
-
-@pytest.fixture
-def server_with_key() -> Iterator[ServerFixture]:
-    """Create server with API key and return fixture."""
-    server = ReloadSocketServer()
-    api_key = server.get_server_info().api_key
-    server.start()
-    fixture = ServerFixture(server, api_key, server.server_address[1])
-
-    yield fixture
-
-    fixture.send("shutdown")
+    from .conftest import ConsoleFixture, ServerFixture
 
 
 def test_server_rejects_invalid_auth_format(
@@ -70,12 +35,14 @@ def test_server_rejects_invalid_api_key(
 
 def test_server_accepts_valid_fzf_port_message(
     server_with_key: ServerFixture,
+    console_out: ConsoleFixture,
 ) -> None:
     """Server stores fzf_port and responds ok."""
     response = server_with_key.send("fzf_port: 12345")
 
     assert response == "ok"
     assert server_with_key.server.fzf_port == 12345
+    assert console_out.getvalue() == "FZF_PORT: 12345\n"
 
 
 def test_server_rejects_invalid_fzf_port(
@@ -99,7 +66,7 @@ def test_server_responds_go_to_reload_message(
 
 def test_server_terminates_running_cmd_proc(
     server_with_key: ServerFixture,
-    console_out: StringIO,
+    console_out: ConsoleFixture,
 ) -> None:
     """Server terminates and waits for cmd_proc on reload."""
     # Setup mock process that is still running
@@ -139,3 +106,87 @@ def test_server_rejects_unknown_command(
     response = server_with_key.send("unknown_cmd")
 
     assert response == "error: unknown command"
+
+
+def test_server_save_output_protocol(
+    server_with_key: ServerFixture,
+) -> None:
+    """Server receives save-output and stores in temp file.
+
+    Uses streaming protocol with length+data pairs.
+    """
+    # Send save-output command with streaming protocol
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect(("127.0.0.1", server_with_key.port))
+        sock.sendall(f"secret: {server_with_key.api_key}\n".encode())
+        sock.sendall(b"save-output\n")
+
+        # Send first chunk: length + data
+        data1 = b"line1: error\n"
+        sock.sendall(f"{len(data1)}\n".encode())
+        sock.sendall(data1)
+
+        # Send second chunk: length + data
+        data2 = b"line2: warning\n"
+        sock.sendall(f"{len(data2)}\n".encode())
+        sock.sendall(data2)
+
+        # Send end marker
+        sock.sendall(b"end\n")
+
+        response = sock.recv(1024).decode().strip()
+
+    assert response == "ok"
+
+    # Verify saved output can be retrieved
+    output_file = server_with_key.server.get_saved_output_file()
+    assert output_file is not None
+    content = output_file.read()
+    assert content == "line1: error\nline2: warning\n"
+
+
+def test_server_save_output_empty(
+    server_with_key: ServerFixture,
+) -> None:
+    """Server handles empty output.
+
+    save-output followed immediately by end.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect(("127.0.0.1", server_with_key.port))
+        sock.sendall(f"secret: {server_with_key.api_key}\n".encode())
+        sock.sendall(b"save-output\n")
+
+        # Send end marker immediately (no data chunks)
+        sock.sendall(b"end\n")
+
+        response = sock.recv(1024).decode().strip()
+
+    assert response == "ok"
+
+    # Verify empty output is saved
+    output_file = server_with_key.server.get_saved_output_file()
+    assert output_file is not None
+    content = output_file.read()
+    assert content == ""
+
+
+def test_server_save_output_connection_closed_before_end(
+    server_with_key: ServerFixture,
+) -> None:
+    """Server discards output if connection closes before 'end' marker."""
+    # Send save-output but close connection before sending 'end'
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect(("127.0.0.1", server_with_key.port))
+        sock.sendall(f"secret: {server_with_key.api_key}\n".encode())
+        sock.sendall(b"save-output\n")
+
+        # Send some data
+        data1 = b"incomplete data\n"
+        sock.sendall(f"{len(data1)}\n".encode())
+        sock.sendall(data1)
+        # Connection closes without 'end'
+
+    # Verify no output is saved (temp file discarded)
+    output_file = server_with_key.server.get_saved_output_file()
+    assert output_file is None

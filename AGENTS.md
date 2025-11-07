@@ -30,6 +30,8 @@
 
 #### Code Quality
 
+- Complexity suppressions: complexity errors (C901, PLR0912, PLR0915) can be
+  suppressed with noqa if a refactoring task is added to TODO.md
 - Validate input once when entering system, handle errors explicitly
 - Include docstrings for functions/modules
 - Limit lines to 79 columns
@@ -38,6 +40,9 @@
 - All other things being equal, prefer code that takes fewer lines
 - Consider intermediate variables where they make code more compact
 - Do not write trivial docstrings, except for important public objects
+- Preserve compact notation for function signatures: keep on one line when
+  possible. For function calls with long arguments, use intermediate variables
+  to prevent wrapping and reduce vertical space waste.
 
 #### Test Driven Develompent (TDD)
 
@@ -49,6 +54,9 @@
     separate commits
 - Refactor: Plan -> Code -> Green -> Commit
   - For: reorganizations with no behavior change, code removal
+- Add tests first, period. Do not fix bugs or add features without a failing
+  test first. If identified during implementation, add to TODO.md for test and
+  fix together.
 
 #### Retrospective
 
@@ -64,6 +72,8 @@
 
 - `just agent-test ...` to run full suite or specific tests
 - `just agent-test -vv ...` for full assert diffs
+- Never run pytest or `just test` directly, always use `just agent-test` which
+  adds flags to prevent context bloat and format errors for machine readability
 - Read error messages: they contain hints or directions
 - Spec mocks: always use create_autospec() or patch(autospec=True), do not use
   plain Mock or MagicMock

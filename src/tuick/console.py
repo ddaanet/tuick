@@ -28,6 +28,12 @@ def print_verbose(*args: Any) -> None:  # noqa: ANN401
     _console.file.flush()
 
 
+def print_exception() -> None:
+    """Print exception with traceback and local variables."""
+    _console.print_exception(show_locals=True)
+    _console.file.flush()
+
+
 def print_entry(command: list[str]) -> None:
     """Print a process entry event, verbose mode."""
     _console.print("[bold]>", *_style_command(command))

@@ -1,16 +1,7 @@
 # Tuick Task List
 
-- On abort, print the output of the last load command.
-  - Reload command writes raw output to the top process, through the socket,
-    require new socket command "save-output".
-  - save-output command follow by sequence of one line containing decimal
-    length, then that many bytes of binary output, then a line containing
-    "end".
-  - Server starts a thread to read from the socket and write to a temporary
-    file, can be unnamed temporary file. If connection is closed before "end",
-    close temp file. If connection reaches end, commit temp file.
-  - On fzf process termination, if status is 130, print the content of the
-    tempfile.
+- Refactor error handling: replace print_error + raise typer.Exit with custom
+  exceptions, catch in main and print with rich. (TRY301)
 
 - Add allow_interspersed_args=False to command, so we do not need to use --
   most of the time.
@@ -25,6 +16,27 @@
 - Test editors with URL integration, on Mac/Linux/Windows.
 
 - Fix uses of generic mocks where specs could be used.
+
+- Refactor test_cli.py to reduce verbosity: factorize subprocess mocking setup
+  to make tests easier to understand and maintain.
+
+- Refactor existing tests that manually create ReloadSocketServer() to use the
+  server_with_key fixture from conftest.py.
+
+- Refactor test_cli.py to use make_cmd_proc and make_fzf_proc helpers, make
+  sequence parameter optional for tests that don't track sequences.
+
+- Fix race condition in reload server: catch ProcessLookupError from
+  .terminate() to handle process that already completed. The proc.poll() check
+  before proc.terminate() is insufficient.
+
+- Optimize output handling: use binary files for saved output instead of text
+  files, use TextIOWrapper when printing to console. This avoids redundant
+  decode-encode operations when streaming output through sockets and files.
+
+- Create custom Popen subclass with thread-safe wait(): add lock around wait()
+  method since it can be called from main thread (normal completion) or reload
+  server thread (termination).
 
 - Enable filtering.
   - That (probably) implies removing the "zero:abort" binding.

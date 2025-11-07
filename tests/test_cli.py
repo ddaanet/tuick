@@ -8,8 +8,12 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 from unittest.mock import ANY, Mock, create_autospec, patch
 
+import pytest
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from .conftest import ConsoleFixture, ServerFixture
 
 from typer.testing import CliRunner
 
@@ -22,6 +26,37 @@ runner = CliRunner()
 def track(seq: list[str], action: str, ret: Any = None):  # noqa: ANN401
     """Append action to sequence, return value."""
     return lambda *a: (seq.append(action), ret)[1]  # type: ignore[func-returns-value]
+
+
+def make_cmd_proc(
+    sequence: list[str], name: str, lines: list[str], returncode: int = 0
+) -> Mock:
+    """Create mocked command subprocess with tracking."""
+
+    def stdout_iter() -> Iterator[str]:
+        for line in lines:
+            sequence.append(f"{name}:{line.strip()}")
+            yield line
+
+    proc: Mock = create_autospec(subprocess.Popen, instance=True)
+    proc.returncode = returncode
+    proc.stdout = stdout_iter()
+    proc.__enter__.side_effect = track(sequence, f"{name}:enter", ret=proc)
+    proc.__exit__.side_effect = track(sequence, f"{name}:exit", ret=False)
+    proc.wait.side_effect = track(sequence, f"{name}:wait")
+    return proc
+
+
+def make_fzf_proc(sequence: list[str], returncode: int = 0) -> Mock:
+    """Create a mocked fzf subprocess that tracks stdin writes and events."""
+    proc: Mock = create_autospec(subprocess.Popen, instance=True)
+    proc.returncode = returncode
+    proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
+    proc.__enter__.side_effect = track(sequence, "fzf:enter", ret=proc)
+    proc.__exit__.side_effect = track(sequence, "fzf:exit", ret=False)
+    proc.stdin.write.side_effect = lambda d: None
+    proc.stdin.close.side_effect = track(sequence, "fzf:close")
+    return proc
 
 
 def test_cli_default_launches_fzf() -> None:
@@ -109,7 +144,7 @@ def test_cli_no_output_no_fzf() -> None:
     assert sequence == ["command:enter", "command:exit"]
 
 
-def test_cli_reload_option(console_out: StringIO) -> None:
+def test_cli_reload_option(console_out: ConsoleFixture) -> None:
     """--reload waits for go response before starting command subprocess."""
     sequence: list[str] = []
 
@@ -151,7 +186,7 @@ def test_cli_reload_option(console_out: StringIO) -> None:
             sock.sendall(f"secret: {api_key}\nshutdown\n".encode())
 
 
-def test_cli_select_plain(console_out: StringIO) -> None:
+def test_cli_select_plain(console_out: ConsoleFixture) -> None:
     """--select option opens editor at location and prints nothing."""
     with (
         patch("tuick.cli.subprocess.run") as mock_run,
@@ -170,7 +205,7 @@ def test_cli_select_plain(console_out: StringIO) -> None:
         mock_run.assert_called_once_with(command, check=True)
 
 
-def test_cli_select_verbose(console_out: StringIO) -> None:
+def test_cli_select_verbose(console_out: ConsoleFixture) -> None:
     """--verbose --select prints the command to execute."""
     with (
         patch("tuick.cli.subprocess.run") as mock_run,
@@ -190,7 +225,7 @@ def test_cli_select_verbose(console_out: StringIO) -> None:
         mock_run.assert_called_once()
 
 
-def test_cli_select_error(console_out: StringIO) -> None:
+def test_cli_select_error(console_out: ConsoleFixture) -> None:
     """--select prints a message if the editor exits with error."""
     with (
         patch("tuick.cli.subprocess.run") as mock_run,
@@ -210,7 +245,7 @@ def test_cli_select_error(console_out: StringIO) -> None:
         assert console_out.getvalue() == "Error: Editor exit status: 1\n"
 
 
-def test_cli_select_no_location_found(console_out: StringIO) -> None:
+def test_cli_select_no_location_found(console_out: ConsoleFixture) -> None:
     """--select with no location does nothing."""
     with patch("tuick.cli.subprocess.run") as mock_run:
         result = runner.invoke(
@@ -222,7 +257,7 @@ def test_cli_select_no_location_found(console_out: StringIO) -> None:
         mock_run.assert_not_called()
 
 
-def test_cli_select_verbose_no_location(console_out: StringIO) -> None:
+def test_cli_select_verbose_no_location(console_out: ConsoleFixture) -> None:
     """--verbose --select with no location prints a message with input."""
     with (
         patch("tuick.cli.subprocess.run") as mock_run,
@@ -244,3 +279,101 @@ def test_cli_exclusive_options() -> None:
         app, ["--reload", "--select", "foo", "--", "mypy", "src/"]
     )
     assert result.exit_code != 0
+
+
+def test_cli_abort_after_initial_load_prints_output() -> None:
+    """On fzf abort (exit 130) after initial load, print initial output."""
+    sequence: list[str] = []
+
+    # Command completes before fzf starts
+    cmd_proc = make_cmd_proc(
+        sequence, "cmd", ["initial.py:1: error\n", "initial.py:2: warning\n"]
+    )
+    fzf_proc = make_fzf_proc(sequence, returncode=130)  # User abort
+
+    with (
+        patch("tuick.cli.subprocess.Popen", side_effect=[cmd_proc, fzf_proc]),
+        patch("tuick.cli.MonitorThread"),
+    ):
+        result = runner.invoke(app, ["--", "mypy", "src/"])
+
+    assert result.exit_code == 0
+
+    # Verify initial output was printed after abort
+    assert "initial.py:1: error" in result.stdout
+    assert "initial.py:2: warning" in result.stdout
+
+    # Verify cmd was waited before fzf exit
+    assert sequence.index("cmd:wait") < sequence.index("fzf:exit")
+
+
+@pytest.mark.xfail(reason="needs proper integration test")
+def test_cli_abort_after_reload_prints_reload_output(
+    server_with_key: ServerFixture,
+) -> None:
+    """On fzf abort after reload, print reload output."""
+    # list_command overwrites saved_output_file
+    saved_file = StringIO("reloaded.py:1: new error\nreloaded.py:2: fixed\n")
+    server_with_key.server.saved_output_file = saved_file  # type: ignore[assignment]
+
+    # Initial load and fzf abort
+    initial_proc = create_autospec(subprocess.Popen, instance=True)
+    initial_proc.returncode = 0
+    initial_proc.stdout = iter(["initial.py:1: error\n"])
+    initial_proc.wait.return_value = None
+
+    fzf_proc = create_autospec(subprocess.Popen, instance=True)
+    fzf_proc.returncode = 130  # User abort
+    fzf_proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
+
+    with (
+        patch(
+            "tuick.cli.subprocess.Popen", side_effect=[initial_proc, fzf_proc]
+        ),
+        patch("tuick.cli.MonitorThread"),
+        patch(
+            "tuick.cli.ReloadSocketServer",
+            return_value=server_with_key.server,
+        ),
+    ):
+        result = runner.invoke(app, ["-v", "--", "mypy", "src/"])
+
+    assert result.exit_code == 0
+
+    # Verify reload output printed (not initial)
+    assert "reloaded.py:1: new error" in result.stdout
+    assert "reloaded.py:2: fixed" in result.stdout
+    assert "initial.py:1: error" not in result.stdout
+
+
+@pytest.mark.xfail(reason="needs proper integration test")
+def test_cli_abort_after_initial_terminated_prints_nothing(
+    server_with_key: ServerFixture,
+) -> None:
+    """On fzf abort after initial terminated, print nothing."""
+    # list_command overwrites saved_output_file
+    # No saved output file (process was terminated before reload)
+    server_with_key.server.saved_output_file = None
+
+    # Initial load and fzf abort
+    initial_proc = create_autospec(subprocess.Popen, instance=True)
+    initial_proc.returncode = 0
+    initial_proc.stdout = iter(["initial.py:1: error\n"])
+    initial_proc.wait.return_value = None
+
+    fzf_proc = create_autospec(subprocess.Popen, instance=True)
+    fzf_proc.returncode = 130  # User abort
+    fzf_proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
+
+    with (
+        patch(
+            "tuick.cli.subprocess.Popen", side_effect=[initial_proc, fzf_proc]
+        ),
+        patch("tuick.cli.MonitorThread"),
+    ):
+        result = runner.invoke(app, ["--", "mypy", "src/"])
+
+    assert result.exit_code == 0
+
+    # Verify nothing printed (no saved output file)
+    assert result.stdout.strip() == ""

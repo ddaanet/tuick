@@ -11,8 +11,9 @@ import shutil
 import socket
 import subprocess
 import sys
-import threading
+import tempfile
 import typing
+from io import StringIO
 from pathlib import Path
 from subprocess import PIPE, STDOUT
 
@@ -43,6 +44,11 @@ app = typer.Typer()
 
 # ruff: noqa: FBT001 FBT003 Typer API uses boolean arguments for flags
 # ruff: noqa: B008 function-call-in-default-argument
+# ruff: noqa: TRY301 Error handling refactoring in TODO.md
+
+
+class ProcessTerminatedError(Exception):
+    """Raised when a command process is terminated before completing."""
 
 
 @app.command()
@@ -117,7 +123,7 @@ class CallbackCommands:
         self.message_prefix = quote_command([myself, "--message"])
 
 
-def list_command(command: list[str], *, verbose: bool = False) -> None:
+def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa: C901
     """List errors from running COMMAND."""
     callbacks = CallbackCommands(command, verbose=verbose)
     user_interface = FzfUserInterface(command)
@@ -143,35 +149,34 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
         monitor.start()
         stack.callback(monitor.stop)
 
-        # Run command and stream to fzf stdin
-        env = os.environ.copy()
-        env["FORCE_COLOR"] = "1"
-        if verbose:
-            print_command(command)
-        cmd_proc = subprocess.Popen(
-            command, stdout=PIPE, stderr=STDOUT, text=True, env=env
+        # Run command, save raw output to temp file, and stream blocks to fzf
+        temp_file = stack.enter_context(
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8")
         )
+
+        cmd_proc = _create_command_process(command, verbose=verbose)
         stack.enter_context(cmd_proc)
         reload_server.cmd_proc = cmd_proc
 
         assert cmd_proc.stdout is not None
-        chunks = split_blocks(cmd_proc.stdout)
+        stdout = cmd_proc.stdout
 
-        def wait_initial_command() -> None:
-            cmd_proc.wait()
-            if verbose:
-                args = "  Initial command exit:", cmd_proc.returncode
-                print_verbose(*args)
+        # Wrapper to save raw output while feeding to split_blocks
+        def raw_and_split() -> typing.Iterator[str]:
+            for line in stdout:
+                temp_file.write(line)
+                yield line
+
+        chunks = split_blocks(raw_and_split())
 
         try:
             # Read first chunk to check if there's any output
             first_chunk = next(chunks)
         except StopIteration:
             # No output, don't start fzf
-            wait_initial_command()
+            _wait_command(cmd_proc, verbose=verbose)
+            temp_file.close()
             return
-
-        threading.Thread(target=wait_initial_command, daemon=True).start()
 
         with open_fzf_process(
             callbacks,
@@ -182,20 +187,32 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
         ) as fzf_proc:
             assert fzf_proc.stdin is not None
 
-            # Write blocks to fzf stdin
-            fzf_proc.stdin.write(first_chunk)
-            fzf_proc.stdin.flush()
+            # Write first chunk to fzf stdin
+            _write_block_and_maybe_flush(fzf_proc.stdin, first_chunk)
+
+            # Continue writing blocks to fzf stdin
             for chunk in chunks:
-                fzf_proc.stdin.write(chunk)
-                # Current split_blocks implementation sometimes yields single
-                # chars, like nulls and newlines. No need to flush those
-                # because there is nothing to display
-                if len(chunk) > 1:
-                    fzf_proc.stdin.flush()
+                _write_block_and_maybe_flush(fzf_proc.stdin, chunk)
+
             fzf_proc.stdin.close()
 
-        if fzf_proc.returncode not in (0, 1, 130):
-            # 0 normal exit, 1 no match, 130 user abort
+            # Wait for command process before fzf exits
+            _wait_command(cmd_proc, verbose=verbose)
+
+        reload_server.commit_saved_output_file(temp_file)
+
+        if fzf_proc.returncode == 130:
+            # User abort - print saved output if available
+            output_file = reload_server.get_saved_output_file()
+            if output_file:
+                chunk_size = 8192
+                while True:
+                    chunk = output_file.read(chunk_size)
+                    if not chunk:
+                        break
+                    sys.stdout.write(chunk)
+        elif fzf_proc.returncode not in (0, 1):
+            # 0 normal exit, 1 no match
             sys.exit(1)
 
 
@@ -219,30 +236,72 @@ def _send_to_tuick_server(message: str, expected: str) -> None:
         raise typer.Exit(1)
 
 
-def _run_command_and_stream_blocks(
-    command: list[str], output: typing.TextIO, *, verbose: bool = False
-) -> None:
-    """Run COMMAND with FORCE_COLOR=1 and stream null-separated blocks."""
+def _create_command_process(
+    command: list[str], *, verbose: bool = False
+) -> subprocess.Popen[str]:
+    """Create command subprocess with FORCE_COLOR=1."""
     env = os.environ.copy()
     env["FORCE_COLOR"] = "1"
     if verbose:
         print_command(command)
-    with subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=env,
-    ) as process:
-        assert process.stdout
-        for block in split_blocks(process.stdout):
-            output.write(block)
-            if len(block) > 1:
-                # split_blocks sometimes yields single chars, like nulls and
-                # newlines. Do not flush those, there is nothing to display
-                output.flush()
+    return subprocess.Popen(
+        command, stdout=PIPE, stderr=STDOUT, text=True, env=env
+    )
+
+
+def _process_output_and_yield_raw(
+    process: subprocess.Popen[str],
+    output: typing.TextIO,
+    *,
+    verbose: bool = False,
+) -> typing.Iterator[str]:
+    """Read process output, write blocks to output, yield raw output.
+
+    Writes null-separated blocks to output (for fzf stdin or stdout). Yields
+    raw output immediately as blocks are read (for saving to file).
+    """
+    assert process.stdout
+    for block in split_blocks(process.stdout):
+        _write_block_and_maybe_flush(output, block)
+        yield block
     if verbose:
-        print_verbose("  Reload command exit:", process.returncode)
+        print_verbose("  Command exit:", process.returncode)
+
+
+def _buffer_chunks(
+    raw_iterator: typing.Iterator[str], chunk_size: int = 8192
+) -> typing.Iterator[str]:
+    """Buffer raw output for efficient socket transmission."""
+    accumulator = StringIO()
+    for raw in raw_iterator:
+        accumulator.write(raw)
+        if accumulator.tell() >= chunk_size:
+            chunk = accumulator.getvalue()
+            accumulator = StringIO()
+            yield chunk
+    remaining = accumulator.getvalue()
+    if remaining:
+        yield remaining
+
+
+def _write_block_and_maybe_flush(output: typing.IO[str], block: str) -> None:
+    """Write block to output and flush if block is substantial.
+
+    split_blocks sometimes yields single chars like nulls and newlines. No need
+    to flush those because there is nothing to display yet.
+    """
+    output.write(block)
+    if len(block) > 1:
+        output.flush()
+
+
+def _wait_command(
+    process: subprocess.Popen[str], *, verbose: bool = False
+) -> None:
+    """Wait for command process and optionally log exit code."""
+    process.wait()
+    if verbose:
+        print_verbose("  Initial command exit:", process.returncode)
 
 
 def start_command() -> None:
@@ -255,10 +314,34 @@ def start_command() -> None:
 
 
 def reload_command(command: list[str], *, verbose: bool = False) -> None:
-    """Notify parent, wait for go, then run command and output blocks."""
+    """Notify parent, wait for go, run command and save output."""
     try:
         _send_to_tuick_server("reload", "go")
-        _run_command_and_stream_blocks(command, sys.stdout, verbose=verbose)
+        tuick_port = os.environ.get("TUICK_PORT")
+        tuick_api_key = os.environ.get("TUICK_API_KEY")
+        if not tuick_port or not tuick_api_key:
+            print_error(None, "Missing TUICK_PORT or TUICK_API_KEY")
+            raise typer.Exit(1)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect(("127.0.0.1", int(tuick_port)))
+            sock.sendall(f"secret: {tuick_api_key}\n".encode())
+            sock.sendall(b"save-output\n")
+
+            with _create_command_process(command, verbose=verbose) as process:
+                raw_output = _process_output_and_yield_raw(
+                    process, sys.stdout, verbose=verbose
+                )
+                for chunk in _buffer_chunks(raw_output):
+                    data_bytes = chunk.encode("utf-8")
+                    sock.sendall(f"{len(data_bytes)}\n".encode())
+                    sock.sendall(data_bytes)
+
+            sock.sendall(b"end\n")
+            response = sock.recv(1024).decode().strip()
+            if response != "ok":
+                print_error(None, "Server response:", response)
+                raise typer.Exit(1)
     except Exception as error:
         print_error("Reload error:", error)
         raise
