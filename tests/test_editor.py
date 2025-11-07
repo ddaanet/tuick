@@ -19,7 +19,7 @@ from tuick.editor import (
 from tuick.parser import FileLocation
 
 if TYPE_CHECKING:
-    from io import StringIO
+    from tests.conftest import ConsoleFixture
 
 
 def _mock_resolve(self: Path, *, strict: bool = False) -> Path:
@@ -340,7 +340,7 @@ def test_get_editor_command(
 class TestEditorURL:
     """Tests for EditorURL class."""
 
-    def test_displays_open_command(self, console_out: StringIO) -> None:
+    def test_displays_open_command(self, console_out: ConsoleFixture) -> None:
         """Rich console displays 'open {url}'."""
         url = "vscode://file//project/src/test.py:10:5"
         cmd = EditorURL(url)
@@ -387,12 +387,14 @@ class TestEditorURL:
 class TestEditorSubprocess:
     """Tests for EditorSubprocess class."""
 
-    def test_displays_formatted_command(self, console_out: StringIO) -> None:
+    def test_displays_formatted_command(
+        self, console_out: ConsoleFixture
+    ) -> None:
         """Rich console displays shell-quoted command args."""
         print_command(EditorSubprocess(["vim", "+10", "src/test.py"]))
         assert console_out.getvalue() == "  $ vim +10 src/test.py\n"
 
-    def test_shell_quotes_spaces(self, console_out: StringIO) -> None:
+    def test_shell_quotes_spaces(self, console_out: ConsoleFixture) -> None:
         """Rich console correctly shell quotes args with spaces."""
         args = ["/usr/bin/my editor", "--arg", "file with spaces.py"]
         print_command(EditorSubprocess(args))
