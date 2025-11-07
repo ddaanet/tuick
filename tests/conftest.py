@@ -17,7 +17,16 @@ if TYPE_CHECKING:
 
 @dataclass
 class ConsoleFixture:
-    """Console output fixture that tracks whether output was checked."""
+    """Console output fixture that tracks whether output was checked.
+
+    Usage patterns:
+    1. Verify specific output: assert console_out.getvalue() == "expected"
+    2. No output expected: don't call getvalue(), fixture verifies empty
+    3. Ignore output: call console_out.ignore_output()
+
+    NEVER call getvalue() without asserting its value - this defeats the
+    safety check for unexpected output.
+    """
 
     _output: StringIO
     _checked: bool = field(default=False, init=False)
