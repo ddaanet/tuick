@@ -12,24 +12,58 @@ help:
 install:
     uv tool install --refresh-package tuick file://.
 
+# Common variables
+
+[private]
+_run-dev := 'uv run --dev'
+[private]
+_python-dirs := "src tests"
+[private]
+_pytest-opts := "--no-header --tb=short"
+
+# Bash definitions
+
+[private]
+_bash-defs := '''
+run_dev="''' + _run-dev + '''"
+python_dirs="''' + _python-dirs + '''"
+COMMAND="''' + style('command') + '''"
+NORMAL="''' + NORMAL + '''"
+safe () { "$@" || status=false; }
+end-safe () { ${status:-true}; }
+show () { echo "$COMMAND$*$NORMAL"; }
+visible () { show "$@"; "$@"; }
+report () { local s=$?; show "$@"; echo "$out"; return $s; }
+quiet () { out=$("$@" >&1) || report "$@"; }
+'''
+
+# Pytest options.
+# Run with full-diff=true for full diffs.
+
+full-diff := 'false'
+[private]
+_diff-limit-opt := ' -o truncation_limit_lines=7'
+[private]
+_pytest-diff-opt := if full-diff == 'true' { '' } else { _diff-limit-opt }
+[private]
+_pytest-agent-opts := _pytest-opts + " --quiet -p no:icdiff" + _pytest-diff-opt
+
 # Development workflow: check, test
 [group('dev')]
-dev: fail_if_claudecode compile
+dev: _fail_if_claudecode compile
     #!/usr/bin/env bash -euo pipefail
-    show () { echo -e "{{ style('command') }}$*{{ NORMAL }}" >&2; }
-    safe () { show "$@"; "$@" || status=false; }
-    safe uv run --dev ruff format --check {{ python_dirs }}
-    safe uv run --dev ruff format --check {{ python_dirs }}
-    safe uv run --dev docformatter --check {{ python_dirs }}
-    safe uv run --dev ruff check --quiet {{ python_dirs }}
-    safe uv run --dev dmypy check {{ python_dirs }}
-    safe uv run --dev pytest --no-header --tb=short
-    ${status:-true}
+    {{ _bash-defs }} {{ _check-body }}
+    safe visible {{ _run-dev }} pytest {{ _pytest-opts }}
+    end-safe
 
 # Agent workflow: check, test with minimal output
 [group('agent')]
-agent: agent-compile agent-check agent-test
-    @echo OK
+agent *ARGS: agent-compile
+    #!/usr/bin/env bash -euo pipefail
+    {{ _bash-defs }} {{ _agent-check-body }}
+    quiet {{ _run-dev }} pytest {{ _pytest-agent-opts }} {{ ARGS }} \
+    || { echo 'For full diffs: "just agent full-diff=true"'; status=false; }
+    end-safe && echo OK
 
 # Clean build files
 [group('dev')]
@@ -41,94 +75,111 @@ clean:
 clean-cache:
     rm -rf .dmypy.json .mypy_cache .pytest_cache .ruff_cache
 
-python_dirs := "src tests"
-
 # Fail if CLAUDECODE is set
-[private]
 [no-exit-message]
-fail_if_claudecode:
-    @{{ if env('CLAUDECODE', '') != '' { '! echo "' + style("error") + '⛔️ Denied: use agent recipes' + NORMAL + '" >&2' } else { '' } }}
+[private]
+_fail_if_claudecode:
+    #!/usr/bin/env bash -euo pipefail
+    if [ "${CLAUDECODE:-}" != "" ]; then
+        echo -e '{{ style("error") }}⛔️ Denied: use agent recipes{{ NORMAL }}'
+        exit 1
+    fi
 
 # Compile python files, quick test for valid syntax
-[private]
 [group('dev')]
+[private]
 compile:
-    uv run -m compileall -q {{ python_dirs }}
+    {{ _run-dev }} -m compileall -q {{ _python-dirs }}
 
 # Compile python files, with less output
-[private]
 [group('agent')]
 [no-exit-message]
+[private]
 agent-compile:
-    @uv run -m compileall -q {{ python_dirs }}
-
-run-dev := "uv run --dev"
+    #!/usr/bin/env bash -euo pipefail
+    {{ _bash-defs }}
+    quiet {{ _run-dev }} -m compileall -q {{ _python-dirs }}
 
 # Run test suite
 [group('dev')]
-test *ARGS: fail_if_claudecode
-    uv run --dev pytest --no-header --tb=short {{ ARGS }}
+test *ARGS: _fail_if_claudecode
+    {{ _run-dev }} pytest {{ _pytest-opts }} {{ ARGS }}
 
 # Run test suite, with less output
 [group('agent')]
 [no-exit-message]
 agent-test *ARGS:
     #!/usr/bin/env bash -euo pipefail
-    quietly () { out=$("$@" >&1) || { local s=$?; echo "$out"; return $s; }; }
-    quietly uv run --dev pytest --no-header --quiet --tb=short -p no:icdiff -o truncation_limit_lines=7{{ ARGS }}
-    if ! {{ is_dependency() }}; then echo OK; fi
+    {{ _bash-defs }}
+    if quiet {{ _run-dev }} pytest {{ _pytest-agent-opts }} {{ ARGS }}; \
+    && { {{ is_dependency() }} || echo OK; } \
+    || { echo 'For full diffs: "just test full-diff=true"'; false; }
 
 # Static code analysis and style checks
 [group('dev')]
-check: fail_if_claudecode compile
+check: _fail_if_claudecode compile
     #!/usr/bin/env bash -euo pipefail
-    show () { echo -e "{{ style('command') }}$*{{ NORMAL }}" >&2; }
-    safe () { show "$@"; "$@" || status=false; }
-    safe uv run --dev ruff format --check {{ python_dirs }}
-    safe uv run --dev docformatter --check {{ python_dirs }}
-    safe uv run --dev ruff check --quiet {{ python_dirs }}
-    safe uv run --dev dmypy check {{ python_dirs }}
-    ${status:-true}
+    {{ _bash-defs }} {{ _check-body }}
+    end-safe
 
-# Interactive code analysis and style checks
+[private]
+_check-body := '''
+    safe visible $run_dev ruff format --check $python_dirs
+    safe visible $run_dev docformatter --check $python_dirs
+    safe visible $run_dev ruff check --quiet $python_dirs
+    safe visible $run_dev dmypy check $python_dirs
+'''
+
+# Auto format and interactive code analysis and style checks
 [group('dev')]
-tuick: fail_if_claudecode compile
-    uv run --dev ruff format --check {{ python_dirs }} \
-    || read -p "Auto-format? (enter or ctrl-C) " \
-    && uv run --dev ruff format {{ python_dirs }}
-    uv run --dev docformatter --check {{ python_dirs }} \
-    || read -p "Auto-format? (enter or ctrl-C) " \
-    && uv run --dev docformatter --in-place {{ python_dirs }}
-    uv run --dev tuick -v -- ruff check --quiet {{ python_dirs }}
-    uv run --dev tuick -v -- dmypy check {{ python_dirs }}
-    uv run --dev tuick -v -- pytest --tb=short --no-header
+tuick: _fail_if_claudecode compile
+    {{ _run-dev }} tuick -- just _tuick
 
-# Report FIXME, TODO, XXX, HACK comments
 [group('dev')]
-fixme:
-    uv run --dev ruff check --quiet \
-    --ignore ALL --select FIX {{ python_dirs }}
+_tuick:
+    #!/usr/bin/env bash -euo pipefail
+    {{ _bash-defs }} {{ _format-body }} {{ _check-body }}
+    safe visible {{ _run-dev }} pytest {{ _pytest-opts }}
+    end-safe
 
-concise := "--output-format concise"
+# Report TODO, FIXME, XXX, HACK comments
+[group('dev')]
+todo:
+    {{ _run-dev }} ruff check --quiet --ignore ALL --select FIX \
+        {{ _python-dirs }}
 
 # Static code analysis and style checks, with less output
 [group('agent')]
 [no-exit-message]
 agent-check: agent-compile
-    @uv run --dev ruff format --check --quiet {{ python_dirs }} \
-    || { echo 'Try "just format"' >&2 ; false; }
-    @uv run --dev docformatter --check {{ python_dirs }}
-    @uv run --dev ruff check --quiet {{ concise }} {{ python_dirs }}
-    @uv run --dev dmypy check {{ python_dirs }}
-    @{{ is_dependency() }} || echo OK
+    #!/usr/bin/env bash -euo pipefail
+    {{ _bash-defs }} {{ _agent-check-body }}
+    end-safe && { {{ is_dependency() }} ||  echo OK; }
+
+[private]
+_agent-check-body := '''
+    safe quiet $run_dev ruff format --check --quiet $python_dirs \
+    || { echo 'Try "just format"'; status=false; }
+    safe quiet $run_dev docformatter --check $python_dirs
+    safe quiet $run_dev ruff check --quiet --output-format=concise $python_dirs
+    safe quiet $run_dev dmypy check $python_dirs
+'''
 
 # Ruff auto-fix
 [group('dev')]
 ruff-fix *ARGS:
-    uv run --dev ruff check --quiet {{ concise }} --fix {{ ARGS }} {{ python_dirs }}
+    {{ _run-dev }} ruff check --quiet --output-format=concise --fix \
+    {{ ARGS }} {{ _python-dirs }}
 
 # Reformat code, fail if formatting errors remain
 [group('dev')]
 format:
-    uv run --dev ruff format {{ python_dirs }}
-    uv run --dev docformatter --in-place {{ python_dirs }}
+    #!/usr/bin/env bash -euo pipefail
+    {{ _bash-defs }} {{ _format-body }}
+    end-safe
+
+[private]
+_format-body := '''
+    safe visible $run_dev ruff format $python_dirs
+    safe visible $run_dev docformatter --in-place $python_dirs
+'''
