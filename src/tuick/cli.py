@@ -27,6 +27,7 @@ from tuick.console import (
     print_event,
     print_verbose,
     print_warning,
+    set_verbose,
 )
 from tuick.editor import (
     UnsupportedEditorError,
@@ -73,8 +74,8 @@ def main(  # noqa: PLR0913
     """Tuick: Text User Interface for Compilers and checkers."""
     with tuick.console.setup_log_file():
         if verbose:
-            base_cmd = Path(sys.argv[0]).name
-            print_entry([base_cmd, *sys.argv[1:]])
+            set_verbose()
+        print_entry([Path(sys.argv[0]).name, *sys.argv[1:]])
 
         exclusive_options = sum([reload, bool(select), start, bool(message)])
         if exclusive_options > 1:
@@ -89,9 +90,9 @@ def main(  # noqa: PLR0913
             print_error(None, "No command specified")
 
         if reload:
-            reload_command(command, verbose=verbose)
+            reload_command(command)
         elif select:
-            select_command(select, verbose=verbose)
+            select_command(select)
         elif start:
             start_command()
         elif message:
@@ -123,7 +124,7 @@ class CallbackCommands:
         self.message_prefix = quote_command([myself, "--message"])
 
 
-def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa: C901
+def list_command(command: list[str], *, verbose: bool = False) -> None:
     """List errors from running COMMAND."""
     callbacks = CallbackCommands(command, verbose=verbose)
     user_interface = FzfUserInterface(command)
@@ -133,10 +134,9 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa:
         reload_server = ReloadSocketServer()
         reload_server.start()
 
-        if verbose:
-            server_info = reload_server.get_server_info()
-            print_verbose("TUICK_PORT:", server_info.port)
-            print_verbose("TUICK_API_KEY:", server_info.api_key)
+        server_info = reload_server.get_server_info()
+        print_verbose("TUICK_PORT:", server_info.port)
+        print_verbose("TUICK_API_KEY:", server_info.api_key)
 
         monitor = MonitorThread(
             callbacks.reload_command,
@@ -144,8 +144,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa:
             reload_server,
             verbose=verbose,
         )
-        if verbose:
-            print_verbose("FZF_API_KEY:", monitor.fzf_api_key)
+        print_verbose("FZF_API_KEY:", monitor.fzf_api_key)
         monitor.start()
         stack.callback(monitor.stop)
 
@@ -154,7 +153,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa:
             tempfile.TemporaryFile(mode="w+", encoding="utf-8")
         )
 
-        cmd_proc = _create_command_process(command, verbose=verbose)
+        cmd_proc = _create_command_process(command)
         stack.enter_context(cmd_proc)
         reload_server.cmd_proc = cmd_proc
 
@@ -174,7 +173,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa:
             first_chunk = next(chunks)
         except StopIteration:
             # No output, don't start fzf
-            _wait_command(cmd_proc, verbose=verbose)
+            _wait_command(cmd_proc)
             temp_file.close()
             return
 
@@ -183,7 +182,6 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa:
             user_interface,
             reload_server.get_server_info(),
             monitor.fzf_api_key,
-            verbose=verbose,
         ) as fzf_proc:
             assert fzf_proc.stdin is not None
 
@@ -197,7 +195,7 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:  # noqa:
             fzf_proc.stdin.close()
 
             # Wait for command process before fzf exits
-            _wait_command(cmd_proc, verbose=verbose)
+            _wait_command(cmd_proc)
 
         reload_server.commit_saved_output_file(temp_file)
 
@@ -236,24 +234,18 @@ def _send_to_tuick_server(message: str, expected: str) -> None:
         raise typer.Exit(1)
 
 
-def _create_command_process(
-    command: list[str], *, verbose: bool = False
-) -> subprocess.Popen[str]:
+def _create_command_process(command: list[str]) -> subprocess.Popen[str]:
     """Create command subprocess with FORCE_COLOR=1."""
     env = os.environ.copy()
     env["FORCE_COLOR"] = "1"
-    if verbose:
-        print_command(command)
+    print_command(command)
     return subprocess.Popen(
         command, stdout=PIPE, stderr=STDOUT, text=True, env=env
     )
 
 
 def _process_output_and_yield_raw(
-    process: subprocess.Popen[str],
-    output: typing.TextIO,
-    *,
-    verbose: bool = False,
+    process: subprocess.Popen[str], output: typing.TextIO
 ) -> typing.Iterator[str]:
     """Read process output, write blocks to output, yield raw output.
 
@@ -264,8 +256,7 @@ def _process_output_and_yield_raw(
     for block in split_blocks(process.stdout):
         _write_block_and_maybe_flush(output, block)
         yield block
-    if verbose:
-        print_verbose("  Command exit:", process.returncode)
+    print_verbose("  Command exit:", process.returncode)
 
 
 def _buffer_chunks(
@@ -295,13 +286,10 @@ def _write_block_and_maybe_flush(output: typing.IO[str], block: str) -> None:
         output.flush()
 
 
-def _wait_command(
-    process: subprocess.Popen[str], *, verbose: bool = False
-) -> None:
+def _wait_command(process: subprocess.Popen[str]) -> None:
     """Wait for command process and optionally log exit code."""
     process.wait()
-    if verbose:
-        print_verbose("  Initial command exit:", process.returncode)
+    print_verbose("  Initial command exit:", process.returncode)
 
 
 def start_command() -> None:
@@ -313,7 +301,7 @@ def start_command() -> None:
     _send_to_tuick_server(f"fzf_port: {fzf_port}", "ok")
 
 
-def reload_command(command: list[str], *, verbose: bool = False) -> None:
+def reload_command(command: list[str]) -> None:
     """Notify parent, wait for go, run command and save output."""
     try:
         _send_to_tuick_server("reload", "go")
@@ -328,10 +316,8 @@ def reload_command(command: list[str], *, verbose: bool = False) -> None:
             sock.sendall(f"secret: {tuick_api_key}\n".encode())
             sock.sendall(b"save-output\n")
 
-            with _create_command_process(command, verbose=verbose) as process:
-                raw_output = _process_output_and_yield_raw(
-                    process, sys.stdout, verbose=verbose
-                )
+            with _create_command_process(command) as process:
+                raw_output = _process_output_and_yield_raw(process, sys.stdout)
                 for chunk in _buffer_chunks(raw_output):
                     data_bytes = chunk.encode("utf-8")
                     sock.sendall(f"{len(data_bytes)}\n".encode())
@@ -347,13 +333,12 @@ def reload_command(command: list[str], *, verbose: bool = False) -> None:
         raise
 
 
-def select_command(selection: str, *, verbose: bool = False) -> None:
+def select_command(selection: str) -> None:
     """Display the selected error in the text editor."""
     try:
         location = get_location(selection)
     except FileLocationNotFoundError:
-        if verbose:
-            print_warning("No location found:", repr(selection))
+        print_warning("No location found:", repr(selection))
         return
 
     # Get editor from environment
@@ -371,8 +356,7 @@ def select_command(selection: str, *, verbose: bool = False) -> None:
         raise typer.Exit(1) from error
 
     # Display and execute command
-    if verbose:
-        print_command(editor_command)
+    print_command(editor_command)
     try:
         editor_command.run()
     except subprocess.CalledProcessError as error:

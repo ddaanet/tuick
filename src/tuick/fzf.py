@@ -5,7 +5,7 @@ import subprocess
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from tuick.console import print_command, print_error, print_success
+from tuick.console import is_verbose, print_command, print_error, print_success
 from tuick.shell import quote_command
 
 if TYPE_CHECKING:
@@ -30,8 +30,6 @@ def open_fzf_process(
     user_interface: FzfUserInterface,
     tuick_server_info: TuickServerInfo,
     fzf_api_key: str,
-    *,
-    verbose: bool,
 ) -> Iterator[subprocess.Popen[str]]:
     """Open and manage fzf process."""
     env = os.environ.copy()
@@ -44,7 +42,7 @@ def open_fzf_process(
     def binding_verbose(
         event: str, message: str, *, plus: bool = False
     ) -> list[str]:
-        if not verbose:
+        if not is_verbose():
             return []
         action = f"execute-silent({callbacks.message_prefix} {message})"
         return [f"{event}:{'+' if plus else ''}{action}"]
@@ -71,17 +69,12 @@ def open_fzf_process(
         *("--disabled", "--no-input", "--bind"),
         ",".join(fzf_bindings),
     ]
-
-    if verbose:
-        print_command(fzf_cmd)
-
+    print_command(fzf_cmd)
     with subprocess.Popen(
         fzf_cmd, stdin=subprocess.PIPE, text=True, env=env
     ) as fzf_proc:
         yield fzf_proc
-
-    if verbose:
-        _print_fzf_exit(fzf_proc.returncode)
+    _print_fzf_exit(fzf_proc.returncode)
 
 
 def _print_fzf_exit(returncode: int) -> None:

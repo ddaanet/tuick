@@ -21,12 +21,25 @@ TUICK_LOG_FILE = "TUICK_LOG_FILE"
 
 
 _console = Console(soft_wrap=True, stderr=True)
+_verbose = False
+
+
+def set_verbose() -> None:
+    """Turn on verbose mode."""
+    global _verbose  # noqa: PLW0603
+    _verbose = True
+
+
+def is_verbose() -> bool:
+    """Check if verbose mode is enabled."""
+    return _verbose
 
 
 def print_verbose(*args: Any) -> None:  # noqa: ANN401
     """Print general verbose messages."""
-    _console.print(*args, style="dim")
-    _console.file.flush()
+    if _verbose:
+        _console.print(*args, style="dim")
+        _console.file.flush()
 
 
 def print_exception() -> None:
@@ -40,18 +53,22 @@ def print_exception() -> None:
 
 def print_entry(command: list[str]) -> None:
     """Print a process entry event, verbose mode."""
-    _console.print("[bold]>", *_style_command(command))
-    _console.file.flush()
+    if _verbose:
+        _console.print("[bold]>", *_style_command(command))
+        _console.file.flush()
 
 
 def print_event(message: str) -> None:
     """Print an event message, verbose mode."""
-    _console.print("[bold]>", message, style="magenta")
-    _console.file.flush()
+    if _verbose:
+        _console.print("[bold]>", message, style="magenta")
+        _console.file.flush()
 
 
 def print_command(command: list[str] | EditorCommand) -> None:
     """Print a command to be executed, verbose mode."""
+    if not _verbose:
+        return
     if isinstance(command, EditorCommand):
         command = command.command_words()
     words = _style_command(command)
@@ -83,14 +100,16 @@ def _style_shell_word(word: str, *, first: bool) -> str:
 
 def print_success(*args: Any) -> None:  # noqa: ANN401
     """Print a success message."""
-    _console.print(*args, style="blue")
-    _console.file.flush()
+    if _verbose:
+        _console.print(*args, style="blue")
+        _console.file.flush()
 
 
 def print_warning(*args: Any) -> None:  # noqa: ANN401
     """Print a warning message."""
-    _console.print(*args, style="yellow")
-    _console.file.flush()
+    if _verbose:
+        _console.print(*args, style="yellow")
+        _console.file.flush()
 
 
 def print_error(title: str | None, *args: Any) -> None:  # noqa: ANN401
