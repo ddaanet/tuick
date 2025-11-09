@@ -32,6 +32,16 @@
   lines, redundancy
 - Make code concise while retaining functionality and readability
 
+#### Planning
+
+- Keep plans concise: under 200 lines, outline level
+- Document unknowns as open questions for research
+- Do not make assumptions about implementation details
+- Expect iterative refinement through conversation
+- Use appendices for supporting information
+- Create/update codebase map early for session continuity
+- In plan mode: no file writes until plan approved
+
 #### Code Quality
 
 - Complexity suppressions: complexity errors (C901, PLR0912, PLR0915) can be
