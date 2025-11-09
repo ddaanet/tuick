@@ -40,7 +40,7 @@ class CliRunner(typer.testing.CliRunner):
             args = [args]
         elif args is None:
             args = []
-        with patch("sys.argv", ["tuick", *args]):  # type: ignore[call-overload]
+        with patch("sys.argv", ["tuick", *args]):
             result = super().invoke(app, args, *args_, **kwargs)
             exception = result.exception
             if isinstance(exception, Exception) and not isinstance(
@@ -245,7 +245,6 @@ def test_cli_select_verbose(console_out: ConsoleFixture) -> None:
     with (
         patch("tuick.cli.subprocess.run") as mock_run,
         patch("tuick.cli.get_editor_from_env", return_value="vi"),
-        patch("sys.argv", ["tuick", "(mock argv)"]),
     ):
         mock_run.return_value = create_autospec(
             subprocess.CompletedProcess, instance=True
@@ -254,9 +253,11 @@ def test_cli_select_verbose(console_out: ConsoleFixture) -> None:
         args = app, ["--verbose", "--select", "src/test.py:10:5: error: Test"]
         result = runner.invoke(*args)
         assert result.exit_code == 0
-        assert console_out.getvalue() == (
-            "> tuick '(mock argv)'\n  $ vi +10 '+normal! 5l' src/test.py\n"
+        expected = (
+            "> tuick --verbose --select 'src/test.py:10:5: error: Test'\n"
+            "  $ vi +10 '+normal! 5l' src/test.py\n"
         )
+        assert console_out.getvalue() == expected
         mock_run.assert_called_once()
 
 
@@ -294,14 +295,11 @@ def test_cli_select_no_location_found(console_out: ConsoleFixture) -> None:
 
 def test_cli_select_verbose_no_location(console_out: ConsoleFixture) -> None:
     """--verbose --select with no location prints a message with input."""
-    with (
-        patch("tuick.cli.subprocess.run") as mock_run,
-        patch("sys.argv", ["tuick", "(mock argv)"]),
-    ):
+    with patch("tuick.cli.subprocess.run") as mock_run:
         result = runner.invoke(app, ["--select", "plain text", "--verbose"])
         assert result.exit_code == 0
         assert console_out.getvalue() == dedent("""\
-            > tuick '(mock argv)'
+            > tuick --select 'plain text' --verbose
             No location found: 'plain text'
         """)
         # Verify editor was not called
@@ -314,6 +312,11 @@ def test_cli_exclusive_options(console_out: ConsoleFixture) -> None:
         app, ["--reload", "--select", "foo", "--", "mypy", "src/"]
     )
     assert result.exit_code != 0
+    expected = (
+        "Error: Options --reload, --select, --start, and --message are"
+        " mutually exclusive\n"
+    )
+    assert console_out.getvalue() == expected
 
 
 def test_cli_abort_after_initial_load_prints_output(
