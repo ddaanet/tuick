@@ -19,33 +19,9 @@
 - agentfiles: Do not commit agent-specific rule files (CLAUDE.md, .cursorrules,
   etc.). Always update AGENTS.md instead to avoid vendor lock-in
 
-## Global Rules
+## Design and Planning
 
-### Version Control and Project Management
-
-- Commit with short informative messages
-- Use gitmojis (https://gitmoji.dev) as unicode
-- `just agent` before every commit, to run all checks and tests
-- `just format` to format code
-- `just ruff-fix` to apply automated fixes
-- NEVER run `ruff`, `mypy`, or `pytest` directly. ALWAYS use just commands
-
-### Agent Delegation
-
-- When delegating to sub-agents (Task tool), always include @AGENTS.md in
-  context so sub-agents follow project rules
-- Sub-agents often ignore instructions - be explicit:
-  - List forbidden commands with ❌ (e.g., `ruff check` ❌)
-  - List allowed commands with ✓ (e.g., `just agent` ✓)
-  - Tell agent to start with `just agent` to see current state
-
-### Design and Development
-
-- Mechanical refactoring: when doing 5+ similar edits (type renames, import
-  updates, signature changes), consider delegation to faster processing if your
-  agent supports it
-
-#### Architecture
+### Architecture
 
 - datafirst: Design data structures first: names, attributes, types, docstrings.
   Code design flows from data structure design
@@ -53,7 +29,7 @@
   lines, redundancy
 - Make code concise while retaining functionality and readability
 
-#### Planning
+### Planning
 
 - Keep plans concise: under 200 lines, outline level
 - Document unknowns as open questions for research
@@ -66,16 +42,16 @@
 - Create/update codebase map early for session continuity
 - In plan mode: no file writes until plan approved
 
-#### Interface Design
+### Interface Design
 
 - Present usage examples before implementation details when designing interfaces
 - Show concrete examples of how users will interact with the system
 - Validate that common cases are simple and require minimal configuration
 
-#### Code Quality
+## Code Style and Quality
 
-- Complexity suppressions: complexity errors (C901, PLR0912, PLR0915) can be
-  suppressed with noqa if a refactoring task is added to TODO.md
+### General
+
 - Validate input once when entering system, handle errors explicitly
 - Include docstrings for functions/modules
 - Limit lines to 79 columns
@@ -89,8 +65,22 @@
   to prevent wrapping and reduce vertical space waste.
 - Docstring first line must be concise, details go in body or comments
 - Implementation details belong in comments, not docstrings
+- Complexity suppressions: complexity errors (C901, PLR0912, PLR0915) can be
+  suppressed with noqa if a refactoring task is added to TODO.md
 
-#### Test Driven Development (TDD)
+### Python
+
+- Require Python >=3.14: recursive types, no future, no quotes
+- Write fully typed code with modern hints (`list[T]` not `List[T]`)
+- Keep try blocks minimal to catch only intended errors
+- All imports at module level, except there is a specific reason not to
+- Unused parameters: Mark with leading underscore (`_param`) rather than noqa
+  comments. More Pythonic and makes intent explicit.
+- Don't start unittest docstrings with "Test"
+
+## Testing
+
+### Test Driven Development (TDD)
 
 - Red-green: Plan -> Test (Red) -> Code (Green) -> Commit -> Refactor
   - For: new features, fixes
@@ -104,22 +94,16 @@
   test first. If identified during implementation, add to TODO.md for test and
   fix together.
 
-#### Retrospective
-
-- Review feedback: After committing each task, review the session and summarize
-  the provided feedback
-- Persist feedback: Identify feedback that could be reused, produce a short
-  summary to integrate into AGENTS.md. Changes could be:
-  - Updates to existing rules: changes in the intent, additional details, or
-    additional reinforcement
-  - New rules, if no existing rule seems appropriate
-
-#### Testing
+### Test Execution
 
 - `just agent-test ...` to run full suite or specific tests
-- `just agent-test -vv ...` for full assert diffs
+- `just full-diff=true agent` or `just full-diff=true agent-test` for full
+  assert diffs
 - Never run pytest or `just test` directly, always use `just agent-test` which
   adds flags to prevent context bloat and format errors for machine readability
+
+### Test Quality
+
 - testsize: Keep tests compact, fit in ~50 lines. Use helper functions to
   format expected output declaratively
 - Read error messages: they contain hints or directions
@@ -146,6 +130,9 @@
 - xfail integration tests: For multi-mode features, write xfail integration
   tests for each configuration first, not unit tests for routing. Remove xfail
   as each mode is implemented.
+
+### Test Synchronization
+
 - testsync: Multithreaded tests must use proper synchronization.
   - testawake: `time.sleep()` is _strictly forbidden_ in tests.
   - fastgreen: Never block on the green path. The execution of a successful test
@@ -160,22 +147,41 @@
     be joined.
   - Blocking on a timeout in test and teardown is allowed for failing tests.
 
-### Environment and Tooling
+### Retrospective
 
-#### Python
+- Review feedback: After committing each task, review the session and summarize
+  the provided feedback
+- Persist feedback: Identify feedback that could be reused, produce a short
+  summary to integrate into AGENTS.md. Changes could be:
+  - Updates to existing rules: changes in the intent, additional details, or
+    additional reinforcement
+  - New rules, if no existing rule seems appropriate
+
+## Version Control
+
+- Commit with short informative messages
+- Use gitmojis (https://gitmoji.dev) as unicode
+- `just agent` before every commit, to run all checks and tests
+- Update TODO.md before commit: remove completed tasks, add new tasks identified
+  during implementation
+
+## Tooling
+
+### Just Commands
+
+- `just format` to format code
+- `just ruff-fix` to apply automated fixes
+- `just agent` to run all checks and tests
+- `just agent-test` to run tests with machine-readable output
+- NEVER run `ruff`, `mypy`, or `pytest` directly. ALWAYS use just commands
+
+### Python/uv
 
 - Use `uv run` for all commands that need the python enviroment
 - Use `uv add` to install new production dependencies
 - Use `uv add --dev` to install new development dependencies
-- Require Python >=3.14: recursive types, no future, no quotes
-- Write fully typed code with modern hints (`list[T]` not `List[T]`)
-- Keep try blocks minimal to catch only intended errors
-- Don't start unittest docstrings with "Test"
-- All imports at module level, except there is a specific reason not to
-- Unused parameters: Mark with leading underscore (`_param`) rather than noqa
-  comments. More Pythonic and makes intent explicit.
 
-#### Shell/Scripting
+### Shell/Scripting
 
 - `#!/usr/bin/env bash -euo pipefail`
   - Use `bash` from homebrew
@@ -192,16 +198,28 @@
 - Create scripts/temp files within working directory
 - Do not modify system files
 
-### Communication
+## Agent Delegation
+
+- When delegating to sub-agents (Task tool), always include @AGENTS.md in
+  context so sub-agents follow project rules
+- Sub-agents often ignore instructions - be explicit:
+  - List forbidden commands with ❌ (e.g., `ruff check` ❌)
+  - List allowed commands with ✓ (e.g., `just agent` ✓)
+  - Tell agent to start with `just agent` to see current state
+- Mechanical refactoring: when doing 5+ similar edits (type renames, import
+  updates, signature changes), consider delegation to faster processing if your
+  agent supports it
+
+## Communication
 
 - Be concise and conversational but professional
 - Avoid business-speak, buzzwords, unfounded self-affirmations
 - State facts directly even if they don't conform to requests
 - Use Markdown formatting
 
-### Documentation
+## Documentation
 
-#### Codebase Map
+### Codebase Map
 
 - Location: `docs/codebase-map.md`
 - Purpose: Token-efficient reference for understanding architecture
