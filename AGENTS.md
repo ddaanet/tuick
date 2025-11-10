@@ -1,9 +1,19 @@
 # AI Agent and Development Rules
 
-- Do the first item of TODO.md. Remove completed tasks, add new tasks when
-  identified
-- Practice TDD (Test Driven Development), see below
-- Update TODO.md before commit
+## Development Workflow
+
+1. **Select task**: Do first item of TODO.md
+2. **Implement**: Follow TDD (Test Driven Development) or Refactor approach, see
+   below
+3. **Validate**: Run `just agent` before commit
+4. **Update TODO.md**: Remove completed tasks, add new tasks identified during
+   implementation
+5. **Retrospective**: Review session feedback when user requests, identify
+   reusable patterns for AGENTS.md
+6. **Commit**: Short informative message with gitmoji
+
+## Project Rules
+
 - adblock: DO NOT advertise yourself in commit messages. NO "Generated with",
   "Co-Authored-By", or similar phrases
 - agentfiles: Do not commit agent-specific rule files (CLAUDE.md, .cursorrules,
@@ -80,11 +90,11 @@
 - Docstring first line must be concise, details go in body or comments
 - Implementation details belong in comments, not docstrings
 
-#### Test Driven Develompent (TDD)
+#### Test Driven Development (TDD)
 
 - Red-green: Plan -> Test (Red) -> Code (Green) -> Commit -> Refactor
   - For: new features, fixes
-  - Red: Write tests, ensure thepy fail
+  - Red: Write tests, ensure they fail
   - Green: Implement the simplest correct behavior, run tests to confirm
   - Refactor: Factorize and reorganize tests and code, non trivial changes in
     separate commits
@@ -162,6 +172,8 @@
 - Keep try blocks minimal to catch only intended errors
 - Don't start unittest docstrings with "Test"
 - All imports at module level, except there is a specific reason not to
+- Unused parameters: Mark with leading underscore (`_param`) rather than noqa
+  comments. More Pythonic and makes intent explicit.
 
 #### Shell/Scripting
 
