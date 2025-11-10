@@ -4,7 +4,8 @@
   identified
 - Practice TDD (Test Driven Development), see below
 - Update TODO.md before commit
-- adblock: DO NOT advertise yourself in commit messages
+- adblock: DO NOT advertise yourself in commit messages. NO "Generated with",
+  "Co-Authored-By", or similar phrases
 - agentfiles: Do not commit agent-specific rule files (CLAUDE.md, .cursorrules,
   etc.). Always update AGENTS.md instead to avoid vendor lock-in
 
@@ -17,6 +18,16 @@
 - `just agent` before every commit, to run all checks and tests
 - `just format` to format code
 - `just ruff-fix` to apply automated fixes
+- NEVER run `ruff`, `mypy`, or `pytest` directly. ALWAYS use just commands
+
+### Agent Delegation
+
+- When delegating to sub-agents (Task tool), always include @AGENTS.md in
+  context so sub-agents follow project rules
+- Sub-agents often ignore instructions - be explicit:
+  - List forbidden commands with ❌ (e.g., `ruff check` ❌)
+  - List allowed commands with ✓ (e.g., `just agent` ✓)
+  - Tell agent to start with `just agent` to see current state
 
 ### Design and Development
 
@@ -99,6 +110,8 @@
 - `just agent-test -vv ...` for full assert diffs
 - Never run pytest or `just test` directly, always use `just agent-test` which
   adds flags to prevent context bloat and format errors for machine readability
+- testsize: Keep tests compact, fit in ~50 lines. Use helper functions to
+  format expected output declaratively
 - Read error messages: they contain hints or directions
 - Never guess at fixes: get proper diagnostics (tracebacks, error output) before
   fixing. If error output is unclear, add logging or error handlers first.

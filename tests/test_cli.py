@@ -91,6 +91,25 @@ def make_fzf_proc(sequence: list[str], returncode: int = 0) -> Mock:
     return proc
 
 
+def make_errorformat_proc(
+    sequence: list[str], jsonl_lines: list[str], returncode: int = 0
+) -> Mock:
+    """Create mocked errorformat subprocess with JSONL output."""
+
+    def stdout_iter() -> Iterator[str]:
+        for line in jsonl_lines:
+            sequence.append(f"errorformat:{line[:50]}")
+            yield line
+
+    proc: Mock = create_autospec(subprocess.Popen, instance=True)
+    proc.returncode = returncode
+    proc.stdout = stdout_iter()
+    proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
+    proc.__enter__.side_effect = track(sequence, "errorformat:enter", ret=proc)
+    proc.__exit__.side_effect = track(sequence, "errorformat:exit", ret=False)
+    return proc
+
+
 def test_cli_default_launches_fzf() -> None:
     """Default command streams data incrementally to fzf stdin."""
     sequence: list[str] = []
@@ -417,3 +436,159 @@ def test_cli_abort_after_initial_terminated_prints_nothing(
 
     # Verify nothing printed (no saved output file)
     assert result.stdout.strip() == ""
+
+
+def format_block(file: str, line: str, col: str, text: str) -> str:
+    r"""Format block: file\x1fline\x1fcol\x1f\x1f\x1ftext."""
+    return f"{file}\x1f{line}\x1f{col}\x1f\x1f\x1f{text}"
+
+
+def format_blocks(blocks: list[tuple[str, str, str, str]]) -> str:
+    r"""Format blocks with \0 separators (no trailing \0)."""
+    return "\0".join(format_block(*b) for b in blocks)
+
+
+@pytest.mark.xfail(reason="errorformat integration not implemented")
+def test_errorformat_simple_mode() -> None:
+    """Simple mode: ruff → errorformat JSONL → fzf with field delimiters."""
+    sequence: list[str] = []
+    ruff_lines = [
+        "src/a.py:10:5: F401 unused\n",
+        "src/b.py:15:1: E302\n",
+    ]
+    cmd_proc = make_cmd_proc(sequence, "ruff", ruff_lines)
+    ef_jsonl = [
+        '{"filename":"src/a.py","lnum":10,"col":5,'
+        '"lines":["src/a.py:10:5: F401 unused"]}\n',
+        '{"filename":"src/b.py","lnum":15,"col":1,'
+        '"lines":["src/b.py:15:1: E302"]}\n',
+    ]
+    ef_proc = make_errorformat_proc(sequence, ef_jsonl)
+    fzf_proc = make_fzf_proc(sequence)
+
+    with (
+        patch(
+            "tuick.cli.subprocess.Popen",
+            side_effect=[cmd_proc, ef_proc, fzf_proc],
+        ) as mock,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        runner.invoke(app, ["--", "ruff", "check"])
+
+    assert mock.call_args_list[0].args[0] == ["ruff", "check"]
+    ef_args = ["errorformat", "-w=jsonl", "-name=ruff"]
+    assert mock.call_args_list[1].args[0] == ef_args
+    fzf_cmd = " ".join(mock.call_args_list[2].args[0])
+    assert "--delimiter=\x1f" in fzf_cmd
+
+    blocks = [
+        ("src/a.py", "10", "5", "src/a.py:10:5: F401 unused"),
+        ("src/b.py", "15", "1", "src/b.py:15:1: E302"),
+    ]
+    expected = format_blocks(blocks)
+    writes = [
+        s.removeprefix("write:").strip("'")
+        for s in sequence
+        if s.startswith("write:")
+    ]
+    assert "".join(writes) == expected
+
+
+@pytest.mark.xfail(reason="errorformat integration not implemented")
+def test_errorformat_top_mode() -> None:
+    """Top mode: make with TUICK_NESTED=1 → parse mixed stream."""
+    sequence: list[str] = []
+    make_lines = [
+        "make: Entering 'src'\n",
+        "\x02src/a.c\x1f10\x1f5\x1f\x1f\x1ferror\x03\n",
+        "make: Leaving 'src'\n",
+    ]
+    cmd_proc = make_cmd_proc(sequence, "make", make_lines)
+    ef_jsonl = [
+        '{"filename":"","lnum":"","col":"",'
+        '"lines":["make: Entering \'src\'"]}\n',
+        '{"filename":"","lnum":"","col":"",'
+        '"lines":["make: Leaving \'src\'"]}\n',
+    ]
+    ef_proc = make_errorformat_proc(sequence, ef_jsonl)
+    fzf_proc = make_fzf_proc(sequence)
+
+    with (
+        patch(
+            "tuick.cli.subprocess.Popen",
+            side_effect=[cmd_proc, ef_proc, fzf_proc],
+        ) as mock,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        runner.invoke(app, ["--", "make"])
+
+    assert mock.call_args_list[0].kwargs["env"]["TUICK_NESTED"] == "1"
+
+    expected = format_blocks(
+        [
+            ("", "", "", "make: Entering 'src'"),
+            ("src/a.c", "10", "5", "error"),
+            ("", "", "", "make: Leaving 'src'"),
+        ]
+    )
+    writes = [
+        s.removeprefix("write:").strip("'")
+        for s in sequence
+        if s.startswith("write:")
+    ]
+    assert "".join(writes) == expected
+
+
+@pytest.mark.xfail(reason="errorformat integration not implemented")
+def test_errorformat_format_passthrough(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Format mode without TUICK_NESTED: passthrough to stdout."""
+    sequence: list[str] = []
+    ruff_lines = ["src/a.py:10:5: F401\n"]
+    cmd_proc = make_cmd_proc(sequence, "ruff", ruff_lines)
+
+    with (
+        patch("tuick.cli.subprocess.Popen", side_effect=[cmd_proc]) as mock,
+        patch.dict("os.environ", {}, clear=False),
+    ):
+        runner.invoke(app, ["--format", "--", "ruff", "check"])
+
+    assert mock.call_args_list[0].kwargs.get("stdout") != subprocess.PIPE
+    assert capsys.readouterr().out == "".join(ruff_lines)
+
+
+@pytest.mark.xfail(reason="errorformat integration not implemented")
+def test_errorformat_format_structured() -> None:
+    r"""Format mode with TUICK_NESTED=1: output \x02blocks\x03."""
+    sequence: list[str] = []
+    ruff_lines = ["src/a.py:10:5: F401\n", "src/b.py:15:1: E302\n"]
+    cmd_proc = make_cmd_proc(sequence, "ruff", ruff_lines)
+    ef_jsonl = [
+        '{"filename":"src/a.py","lnum":10,"col":5,'
+        '"lines":["src/a.py:10:5: F401"]}\n',
+        '{"filename":"src/b.py","lnum":15,"col":1,'
+        '"lines":["src/b.py:15:1: E302"]}\n',
+    ]
+    ef_proc = make_errorformat_proc(sequence, ef_jsonl)
+
+    with (
+        patch(
+            "tuick.cli.subprocess.Popen", side_effect=[cmd_proc, ef_proc]
+        ) as mock,
+        patch.dict("os.environ", {"TUICK_NESTED": "1"}),
+    ):
+        result = runner.invoke(app, ["--format", "--", "ruff", "check"])
+
+    assert mock.call_args_list[1].kwargs["stdout"] == subprocess.PIPE
+    expected = (
+        "\x02"
+        + format_blocks(
+            [
+                ("src/a.py", "10", "5", "src/a.py:10:5: F401"),
+                ("src/b.py", "15", "1", "src/b.py:15:1: E302"),
+            ]
+        )
+        + "\x03"
+    )
+    assert result.stdout == expected
