@@ -10,9 +10,9 @@
   - Nested: `tuick --format ruff check` → structured blocks output
 
   **Outline**:
-  1. Write xfail integration tests (simple, top-format, format passthrough)
-  2. Add --format and --top to CLI (route, options, TUICK_NESTED env var)
-  3. Tool detection (ERRORFORMAT_MAP, detect_tool for build systems + checkers)
+  1. ✓ Write xfail integration tests (simple, top-format, format passthrough)
+  2. ✓ Add --format and --top to CLI (route, options, TUICK_NESTED env var)
+  3. ✓ Tool detection (detect_tool, is_known_tool, KNOWN_TOOLS set)
   4. Errorformat wrapper (subprocess, ANSI handling, location extraction)
   5. Block assembly with markers (\x02, \x03)
   6. Implement format_command (nested mode, check TUICK_NESTED)

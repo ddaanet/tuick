@@ -28,6 +28,10 @@
 - Deslop (condense/simplify) generated code: remove unnecessary comments, blank
   lines, redundancy
 - Make code concise while retaining functionality and readability
+- Avoid trivial data structures: if map values are computable or identical to
+  keys, use simpler structure (set instead of dict with identity mapping)
+- Reuse code with shared intent: check existing patterns in codebase before
+  implementing utilities. Use established idioms (Path.name vs os.path.basename)
 
 ### Planning
 
@@ -41,6 +45,8 @@
 - Use appendices for supporting information
 - Create/update codebase map early for session continuity
 - In plan mode: no file writes until plan approved
+- Read documentation thoroughly: understand actual tool behavior before
+  implementing integrations, don't rely on assumptions
 
 ### Interface Design
 
@@ -106,6 +112,9 @@
 
 - testsize: Keep tests compact, fit in ~50 lines. Use helper functions to
   format expected output declaratively
+- Minimize test count: combine related assertions testing the same behavior into
+  one test. Separate tests should test different behaviors, not just different
+  inputs. Don't write tests for trivial variations or CLI usage errors.
 - Read error messages: they contain hints or directions
 - Never guess at fixes: get proper diagnostics (tracebacks, error output) before
   fixing. If error output is unclear, add logging or error handlers first.
@@ -130,6 +139,9 @@
 - xfail integration tests: For multi-mode features, write xfail integration
   tests for each configuration first, not unit tests for routing. Remove xfail
   as each mode is implemented.
+- xfail for TDD of registries: when building registries that start empty and
+  grow, write xfail test for first entry to be added, passing test for unknown
+  entries
 
 ### Test Synchronization
 
