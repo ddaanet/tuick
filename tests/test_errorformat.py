@@ -2,7 +2,7 @@
 
 import pytest
 
-from tuick.errorformat import parse_with_errorformat
+from tuick.errorformat import parse_with_errorformat, split_at_markers
 
 from .test_parser import (
     MYPY_ABSOLUTE_BLOCKS,
@@ -93,3 +93,31 @@ def test_parse_with_errorformat_flake8_with_ansi() -> None:
         "\x1b[36m:\x1b[m \x1b[1m\x1b[31mF401\x1b[m 'sys' imported but unused\0"
     )
     assert result == expected
+
+
+def test_split_at_markers() -> None:
+    """split_at_markers() splits nested and build-system output."""
+    # Multiple marker pairs with null-terminated blocks
+    input_lines = [
+        "make: Entering 'src'\n",
+        "\x02block1\0block2\0\x03",
+        "make: Done\n",
+        "\x02block3\0\x03",
+    ]
+    result = list(split_at_markers(input_lines))
+
+    expected = [
+        (False, "make: Entering 'src'\n"),
+        (True, "block1\0block2\0"),
+        (False, "make: Done\n"),
+        (True, "block3\0"),
+    ]
+    assert result == expected
+
+
+def test_split_at_markers_no_markers() -> None:
+    """split_at_markers() passes through input without markers."""
+    input_lines = ["line1\n", "line2\n"]
+    result = list(split_at_markers(input_lines))
+
+    assert result == [(False, "line1\nline2\n")]

@@ -1,6 +1,7 @@
 """Errorformat integration for parsing tool output."""
 
 import json
+import re
 import shutil
 import subprocess
 import typing
@@ -147,6 +148,26 @@ def parse_with_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:
             stripped_to_original.get(line, line) for line in entry.lines
         ]
         yield format_block_from_entry(entry)
+
+
+def split_at_markers(lines: Iterable[str]) -> Iterator[tuple[bool, str]]:
+    r"""Split lines at \x02 and \x03 markers.
+
+    Yields:
+        (is_nested, content) tuples where is_nested indicates if content
+        came from between markers (True) or outside markers (False).
+    """
+    text = "".join(lines)
+    parts = re.split(r"(\x02|\x03)", text)
+    in_nested = False
+
+    for part in parts:
+        if part == "\x02":
+            in_nested = True
+        elif part == "\x03":
+            in_nested = False
+        elif part:  # Non-empty content
+            yield (in_nested, part)
 
 
 def wrap_blocks_with_markers(blocks: Iterable[str]) -> Iterator[str]:
