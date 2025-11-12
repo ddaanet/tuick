@@ -2,7 +2,7 @@
 
 import pytest
 
-from tuick.errorformats import detect_tool, is_known_tool
+from tuick.tool_registry import detect_tool, is_known_tool
 
 
 def test_detect_tool() -> None:

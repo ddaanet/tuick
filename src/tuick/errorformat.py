@@ -7,7 +7,7 @@ import typing
 from dataclasses import dataclass
 
 from tuick.ansi import strip_ansi
-from tuick.errorformats import (
+from tuick.tool_registry import (
     BUILTIN_TOOLS,
     CUSTOM_PATTERNS,
     OVERRIDE_PATTERNS,

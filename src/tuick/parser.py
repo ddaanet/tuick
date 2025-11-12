@@ -11,7 +11,7 @@ from enum import Enum, auto
 
 from tuick.ansi import strip_ansi
 from tuick.errorformat import parse_with_errorformat
-from tuick.errorformats import detect_tool, is_known_tool
+from tuick.tool_registry import detect_tool, is_known_tool
 
 if typing.TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
