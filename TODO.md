@@ -13,7 +13,10 @@
   1. ✓ Write xfail integration tests (simple, top-format, format passthrough)
   2. ✓ Add --format and --top to CLI (route, options, TUICK_NESTED env var)
   3. ✓ Tool detection (detect_tool, is_known_tool, KNOWN_TOOLS set)
-  4. Errorformat wrapper (subprocess, ANSI handling, location extraction)
+  4. ✓ Errorformat wrapper (subprocess, JSONL parsing, multi-line support)
+     - Pattern registries: BUILTIN_TOOLS, CUSTOM_PATTERNS, OVERRIDE_PATTERNS
+     - Implemented for mypy with custom patterns
+     - TODO: Add integration test for built-in pattern path (e.g., ruff)
   5. Block assembly with markers (\x02, \x03)
   6. Implement format_command (nested mode, check TUICK_NESTED)
   7. Implement top_command (orchestrator, two-layer parsing)

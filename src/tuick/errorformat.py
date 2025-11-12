@@ -6,6 +6,12 @@ import subprocess
 import typing
 from dataclasses import dataclass
 
+from tuick.errorformats import (
+    BUILTIN_TOOLS,
+    CUSTOM_PATTERNS,
+    OVERRIDE_PATTERNS,
+)
+
 if typing.TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
@@ -42,7 +48,7 @@ def run_errorformat(
     """Run errorformat subprocess, yield parsed entries.
 
     Args:
-        tool: Tool name (mypy, etc.) matching errorformat -name option
+        tool: Tool name (mypy, etc.)
         input_lines: Tool output lines (with ANSI codes)
 
     Yields:
@@ -55,7 +61,17 @@ def run_errorformat(
     if shutil.which("errorformat") is None:
         raise ErrorformatNotFoundError
 
-    cmd = ["errorformat", "-w=jsonl", f"-name={tool}"]
+    # Build errorformat command based on tool configuration
+    cmd = ["errorformat", "-w=jsonl"]
+    if tool in OVERRIDE_PATTERNS:
+        cmd.extend(OVERRIDE_PATTERNS[tool])
+    elif tool in CUSTOM_PATTERNS:
+        cmd.extend(CUSTOM_PATTERNS[tool])
+    elif tool in BUILTIN_TOOLS:
+        cmd.append(f"-name={tool}")
+    else:
+        msg = f"Unknown tool: {tool} (is_known_tool() should be checked first)"
+        raise AssertionError(msg)
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,

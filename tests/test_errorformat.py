@@ -14,26 +14,38 @@ from tuick.errorformat import parse_with_errorformat
     != 0,
     reason="errorformat not installed",
 )
-@pytest.mark.xfail(reason="errorformat output format needs investigation")
 def test_parse_with_errorformat_mypy() -> None:
     """Integration test: parse mypy output with errorformat."""
+    # Real mypy output from test_parser.py test data
     mypy_output = [
-        "src/test.py:10:5: error: Missing type annotation\n",
-        "src/foo.py:20: note: Some note\n",
-        "Consider using --strict mode\n",
+        "src/jobsearch/search.py:58: error: Returning Any from function...\n",
+        "src/jobsearch/cadremploi_scraper.py:43:35: error: Missing type "
+        'parameters for "dict"  [type-arg]\n',
+        "    def extract_json_ld(html: str) -> dict | None:\n",
+        "                                      ^\n",
+        "tests/test_search.py:144: error: Non-overlapping equality check...\n",
+        "Found 8 errors in 6 files (checked 20 source files)\n",
     ]
 
     result = "".join(parse_with_errorformat("mypy", iter(mypy_output)))
 
-    # Exact output: null-terminated blocks with unit-separator fields
-    # Block 1: full location (file, line, col)
-    # Block 2: partial location (file, line, no col)
-    # Block 3: no location (informational message) - empty fields
+    # Block 1: file:line (no column)
+    # Block 2: file:line:col with 2 continuation lines (multi-line)
+    # Block 3: file:line (no column)
+    # Block 4: informational message (no location, valid=true via %G)
     expected = (
-        "src/test.py\x1f10\x1f5\x1f\x1f\x1f"
-        "src/test.py:10:5: error: Missing type annotation\0"
-        "src/foo.py\x1f20\x1f\x1f\x1f\x1f"
-        "src/foo.py:20: note: Some note\0"
-        "\x1f\x1f\x1f\x1f\x1fConsider using --strict mode\0"
+        "src/jobsearch/search.py\x1f58\x1f\x1f\x1f\x1f"
+        "src/jobsearch/search.py:58: error: Returning Any from "
+        "function...\0"
+        "src/jobsearch/cadremploi_scraper.py\x1f43\x1f35\x1f\x1f\x1f"
+        "src/jobsearch/cadremploi_scraper.py:43:35: error: Missing type "
+        'parameters for "dict"  [type-arg]\n'
+        "    def extract_json_ld(html: str) -> dict | None:\n"
+        "                                      ^\0"
+        "tests/test_search.py\x1f144\x1f\x1f\x1f\x1f"
+        "tests/test_search.py:144: error: Non-overlapping equality "
+        "check...\0"
+        "\x1f\x1f\x1f\x1f\x1f"
+        "Found 8 errors in 6 files (checked 20 source files)\0"
     )
     assert result == expected

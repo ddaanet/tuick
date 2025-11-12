@@ -67,7 +67,6 @@ MYPY_VERY_FANCY_BLOCKS = [
     """\
 src/jobsearch/search.py: note: In function "select_one_text":
 src/jobsearch/search.py:58:5:58:29: error: Returning Any from function decla...
-[no-any-return]
         return inner.text.strip()
         ^~~~~~~~~~~~~~~~~~~~~~~~~
 src/jobsearch/search.py:58:5:58:29: note: See https://mypy.rtfd.io/en/stabl...\
@@ -255,7 +254,6 @@ FAILED tests/test_search.py::test_extract_search_card - ValueError
 FAILED tests/test_search.py::test_extract_search_card_no_salary - jobsearch....
 ========================= 2 failed, 32 passed in 4.99s ====================""",
 ]
-
 
 PYTEST_LINE_BLOCKS = [
     """\
