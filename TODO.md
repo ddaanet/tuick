@@ -20,9 +20,12 @@
   5. ✓ Block assembly with markers (\x02, \x03)
      - Added wrap_blocks_with_markers() for nested mode
      - Updated test helpers to use null-terminated blocks
-  6. ✓ Implement format_command (nested mode, check TUICK_NESTED)
-  7. Implement top_command (orchestrator, two-layer parsing)
-  8. Update default command (check TUICK_NESTED)
+  6. ✓ Implement format_command (nested mode, check TUICK_PORT)
+  7. ✓ Implement top_command (orchestrator, two-layer parsing)
+     - Auto-detect build systems in default routing
+     - Two-layer parsing with split_at_markers()
+     - Reuses list_command infrastructure via top_mode parameter
+  8. Update default command (check TUICK_PORT)
   9. Update fzf integration (delimiter config)
   10. Update select_command (receive fields from fzf)
   11. Update reload_command (propagate mode/format through callbacks)
@@ -53,6 +56,12 @@
   - Errorformat may drop invalid lines (but never adds lines)
   - Match ASCII output lines to original ANSI input lines sequentially
   - Simple forward-scan algorithm sufficient (no full diff needed)
+
+- REF[med]: Refactor main() to reduce complexity (C901: 11 > 10). Extract
+  routing logic or use pattern matching.
+
+- REF[med]: Refactor list_command() to reduce complexity (C901: 11 > 10).
+  Extract setup/teardown or use helper functions.
 
 - Configurable editor commands
 

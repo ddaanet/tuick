@@ -32,6 +32,9 @@
   keys, use simpler structure (set instead of dict with identity mapping)
 - Reuse code with shared intent: check existing patterns in codebase before
   implementing utilities. Use established idioms (Path.name vs os.path.basename)
+- Reuse existing infrastructure: before adding new environment variables or IPC
+  mechanisms, check if existing ones can serve the purpose. Reduces complexity
+  and maintenance burden.
 
 ### Planning
 
@@ -47,6 +50,9 @@
 - In plan mode: no file writes until plan approved
 - Read documentation thoroughly: understand actual tool behavior before
   implementing integrations, don't rely on assumptions
+- Be precise about data formats: distinguish between terminators vs separators
+  (null-terminated means `\0` after each item; null-separated means `\0` between
+  items). Document format specs accurately.
 
 ### Interface Design
 
@@ -82,6 +88,9 @@
   Process line-by-line, yield results incrementally. Use generator functions,
   not list() calls that force materialization. MUST maintain streaming:
   consume one item, process, yield result, repeat.
+- Performance: prefer built-in functions and stdlib over manual iteration when
+  performance matters. Example: use `re.split()` over char-by-char loops for
+  string splitting.
 
 ### Python
 
@@ -108,6 +117,9 @@
 - If dispatch is needed, use polymorphism or explicit dispatch functions
 - Example: `split_blocks_auto()` dispatches to `split_blocks()` or
   `split_blocks_errorformat()` based on tool
+- Optional parameters: don't make parameters optional if they're always provided
+  at call sites. Simpler to require them. Use `Optional` only for truly optional
+  values.
 
 ## Testing
 
@@ -186,6 +198,9 @@
   details (e.g., process creation/termination, not `__enter__`)
 - Example: `patch_popen(sequence, procs)` encapsulates both patching and proc
   sequencing
+- Mock data tracking: when tracking mock calls in tests, avoid using `!r` repr
+  formatting which adds extra quotes. Use `f"event:{data}"` not
+  `f"event:{data!r}"` for cleaner assertions.
 
 ### Test Synchronization
 

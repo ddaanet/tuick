@@ -37,6 +37,7 @@ from tuick.editor import (
 from tuick.errorformat import (
     ErrorformatNotFoundError,
     parse_with_errorformat,
+    split_at_markers,
     wrap_blocks_with_markers,
 )
 from tuick.fzf import FzfUserInterface, open_fzf_process
@@ -48,7 +49,7 @@ from tuick.parser import (
 )
 from tuick.reload_socket import ReloadSocketServer
 from tuick.shell import quote_command
-from tuick.tool_registry import detect_tool, is_known_tool
+from tuick.tool_registry import detect_tool, is_build_system, is_known_tool
 
 app = typer.Typer()
 
@@ -63,7 +64,7 @@ class ProcessTerminatedError(Exception):
 
 
 @app.command()
-def main(  # noqa: PLR0913
+def main(  # noqa: PLR0913, C901
     command: list[str] = typer.Argument(default_factory=list),
     reload: bool = typer.Option(
         False, "--reload", help="Internal: run command and output blocks"
@@ -120,9 +121,14 @@ def main(  # noqa: PLR0913
         elif format:
             format_command(command)
         elif top:
-            top_command(command)
+            top_command(command, verbose=verbose)
         else:
-            list_command(command, verbose=verbose)
+            # Auto-detect build systems and use top mode
+            tool = detect_tool(command)
+            if is_build_system(tool):
+                list_command(command, verbose=verbose, top_mode=True)
+            else:
+                list_command(command, verbose=verbose)
 
 
 class CallbackCommands:
@@ -148,8 +154,16 @@ class CallbackCommands:
         self.message_prefix = quote_command([myself, "--message"])
 
 
-def list_command(command: list[str], *, verbose: bool = False) -> None:
-    """List errors from running COMMAND."""
+def list_command(  # noqa: C901
+    command: list[str], *, verbose: bool = False, top_mode: bool = False
+) -> None:
+    """List errors from running COMMAND.
+
+    Args:
+        command: Command to run
+        verbose: Enable verbose output
+        top_mode: If True, use two-layer parsing for build systems
+    """
     callbacks = CallbackCommands(command, verbose=verbose)
     user_interface = FzfUserInterface(command)
 
@@ -177,7 +191,9 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
             tempfile.TemporaryFile(mode="w+", encoding="utf-8")
         )
 
-        cmd_proc = _create_command_process(command)
+        cmd_proc = _create_command_process(
+            command, (server_info.port, server_info.api_key)
+        )
         stack.enter_context(cmd_proc)
         reload_server.cmd_proc = cmd_proc
 
@@ -190,7 +206,11 @@ def list_command(command: list[str], *, verbose: bool = False) -> None:
                 temp_file.write(line)
                 yield line
 
-        chunks = split_blocks_auto(command, raw_and_split())
+        if top_mode:
+            tool = detect_tool(command)
+            chunks = _parse_top_mode(tool, raw_and_split())
+        else:
+            chunks = split_blocks_auto(command, raw_and_split())
 
         try:
             # Read first chunk to check if there's any output
@@ -258,10 +278,22 @@ def _send_to_tuick_server(message: str, expected: str) -> None:
         raise typer.Exit(1)
 
 
-def _create_command_process(command: list[str]) -> subprocess.Popen[str]:
-    """Create command subprocess with FORCE_COLOR=1."""
+def _create_command_process(
+    command: list[str], server_info: tuple[int, str] | None = None
+) -> subprocess.Popen[str]:
+    """Create command subprocess with FORCE_COLOR and optional TUICK_PORT.
+
+    Args:
+        command: Command to execute
+        server_info: Optional (port, api_key) to set TUICK_PORT/API_KEY.
+            If None, inherits from os.environ (for reload/format commands).
+    """
     env = os.environ.copy()
     env["FORCE_COLOR"] = "1"
+    if server_info:
+        port, api_key = server_info
+        env["TUICK_PORT"] = str(port)
+        env["TUICK_API_KEY"] = api_key
     print_command(command)
     return subprocess.Popen(
         command, stdout=PIPE, stderr=STDOUT, text=True, env=env
@@ -430,12 +462,34 @@ def format_command(command: list[str]) -> None:
         raise typer.Exit(1) from error
 
 
-def top_command(_command: list[str]) -> None:
-    """Top mode: orchestrate nested tuick commands with TUICK_NESTED=1."""
-    # TODO: Implement two-layer parsing with errorformat
-    # This will be implemented in step 7 of the plan
-    print_error(None, "Top mode not yet implemented")
-    raise typer.Exit(1)
+def top_command(command: list[str], *, verbose: bool = False) -> None:
+    """Top mode: orchestrate nested tuick commands with TUICK_PORT set."""
+    list_command(command, verbose=verbose, top_mode=True)
+
+
+def _parse_top_mode(
+    tool: str, lines: typing.Iterable[str]
+) -> typing.Iterator[str]:
+    """Parse top mode output with two-layer algorithm.
+
+    Args:
+        tool: Build system tool name for parsing non-nested output
+        lines: Command output lines
+
+    Yields:
+        Block chunks (null-terminated)
+    """
+    for is_nested, content in split_at_markers(lines):
+        if is_nested:
+            # Nested blocks from tuick --format commands pass through as-is
+            yield content
+        elif content.strip():
+            # Build-system output: parse with errorformat if supported
+            if is_known_tool(tool):
+                yield from parse_with_errorformat(tool, [content])
+            else:
+                # No errorformat pattern: output as informational block
+                yield f"\x1f\x1f\x1f\x1f\x1f{content.rstrip()}\0"
 
 
 if __name__ == "__main__":

@@ -89,8 +89,12 @@ def make_fzf_proc(sequence: list[str], returncode: int = 0) -> Mock:
     proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
     proc.__enter__.side_effect = track(sequence, "fzf:enter", ret=proc)
     proc.__exit__.side_effect = track(sequence, "fzf:exit", ret=False)
-    proc.stdin.write.side_effect = lambda d: None
+    proc.stdin.write.side_effect = lambda d: (
+        sequence.append(f"write:{d}"),  # type: ignore[func-returns-value]
+        None,
+    )[1]
     proc.stdin.close.side_effect = track(sequence, "fzf:close")
+    proc.wait.side_effect = track(sequence, "fzf:wait")
     return proc
 
 
@@ -159,7 +163,7 @@ def test_cli_default_launches_fzf() -> None:
     fzf_proc.__enter__.side_effect = track(sequence, "fzf:enter", ret=fzf_proc)
     fzf_proc.__exit__.side_effect = track(sequence, "fzf:exit", ret=False)
     fzf_proc.stdin.write.side_effect = lambda d: (
-        sequence.append(f"write:{d!r}"),  # type: ignore[func-returns-value]
+        sequence.append(f"write:{d}"),  # type: ignore[func-returns-value]
         None,
     )[1]
     fzf_proc.stdin.close.side_effect = track(sequence, "close")
@@ -183,10 +187,10 @@ def test_cli_default_launches_fzf() -> None:
         "command:enter",
         "read:test.py:1: error",
         "fzf:enter",
-        "write:'test.py:1: error'",
+        "write:test.py:1: error",
         "read:test.py:2: warning",
-        "write:'\\x00'",
-        "write:'test.py:2: warning'",
+        "write:\x00",
+        "write:test.py:2: warning",
         "stopiteration",
         "close",
         "fzf:exit",
@@ -538,42 +542,32 @@ def test_errorformat_simple_mode() -> None:
     ]
     expected = format_blocks(blocks)
     writes = [
-        s.removeprefix("write:").strip("'")
-        for s in sequence
-        if s.startswith("write:")
+        s.removeprefix("write:") for s in sequence if s.startswith("write:")
     ]
     assert "".join(writes) == expected
 
 
-@pytest.mark.xfail(reason="errorformat integration not implemented")
 def test_errorformat_top_mode() -> None:
-    """Top mode: make with TUICK_NESTED=1 → parse mixed stream."""
+    """Top mode: make with TUICK_PORT set → parse mixed stream."""
     sequence: list[str] = []
     make_lines = [
         "make: Entering 'src'\n",
-        "\x02src/a.c\x1f10\x1f5\x1f\x1f\x1ferror\x03\n",
+        "\x02src/a.c\x1f10\x1f5\x1f\x1f\x1ferror\0\x03",
         "make: Leaving 'src'\n",
     ]
     cmd_proc = make_cmd_proc(sequence, "make", make_lines)
-    ef_jsonl = [
-        '{"filename":"","lnum":"","col":"",'
-        '"lines":["make: Entering \'src\'"]}\n',
-        '{"filename":"","lnum":"","col":"",'
-        '"lines":["make: Leaving \'src\'"]}\n',
-    ]
-    ef_proc = make_errorformat_proc(sequence, ef_jsonl)
     fzf_proc = make_fzf_proc(sequence)
 
     with (
         patch(
             "tuick.cli.subprocess.Popen",
-            side_effect=[cmd_proc, ef_proc, fzf_proc],
+            side_effect=[cmd_proc, fzf_proc],
         ) as mock,
         patch("tuick.cli.MonitorThread"),
     ):
         runner.invoke(app, ["--", "make"])
 
-    assert mock.call_args_list[0].kwargs["env"]["TUICK_NESTED"] == "1"
+    assert "TUICK_PORT" in mock.call_args_list[0].kwargs["env"]
 
     expected = format_blocks(
         [
@@ -583,9 +577,7 @@ def test_errorformat_top_mode() -> None:
         ]
     )
     writes = [
-        s.removeprefix("write:").strip("'")
-        for s in sequence
-        if s.startswith("write:")
+        s.removeprefix("write:") for s in sequence if s.startswith("write:")
     ]
     assert "".join(writes) == expected
 

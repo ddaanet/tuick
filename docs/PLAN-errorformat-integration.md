@@ -1,7 +1,7 @@
 # Feature Plan: Reviewdog/Errorformat Integration
 
 **Created**: 2025-11-09
-**Updated**: 2025-11-11
+**Updated**: 2025-11-12
 **Status**: Approved - Ready for Implementation
 
 ## Goal
@@ -39,7 +39,7 @@ tuick mypy .                  # No flags needed for common case
 ```
 
 **Behavior**:
-- If `TUICK_NESTED=1`: output structured blocks (behave as nested)
+- If `TUICK_PORT` is set: output structured blocks (behave as nested)
 - If not: detect tool → parse → launch fzf
 
 **Use case**: Direct invocation (95% of usage)
@@ -53,7 +53,7 @@ tuick --top -f make custom    # Explicit format for unrecognized command
 ```
 
 **Behavior**:
-- Set `TUICK_NESTED=1` environment variable
+- Set `TUICK_PORT=<port>` and `TUICK_API_KEY=<key>` in environment
 - Run build command
 - Parse mixed stream (two-layer):
   1. Split at `\x02` and `\x03` markers
@@ -84,7 +84,7 @@ check:
 ```
 
 **Behavior**:
-- If `TUICK_NESTED=1`: parse and output structured blocks with markers
+- If `TUICK_PORT` is set: parse and output structured blocks with markers
 - If not: streaming passthrough (no parsing, no fzf)
 
 **Use case**: Called from build system, safe fallback
@@ -111,7 +111,7 @@ User: tuick ruff check
 ```
 User: tuick make
   → detect 'make' as build system
-  → set TUICK_NESTED=1
+  → set TUICK_PORT=<port>, TUICK_API_KEY=<key>
   → run: make
       → make output: "make: Entering directory 'src'"
       → make calls: tuick --format gcc compile.c
@@ -136,7 +136,7 @@ User: tuick make
 
 ```
 Build system: tuick --format gcc compile.c
-  → check TUICK_NESTED
+  → check TUICK_PORT
       → if set: parse and output blocks with markers
       → if not: streaming passthrough
 ```
@@ -168,7 +168,7 @@ User presses ctrl-r in fzf
 ### Default Mode: `tuick COMMAND`
 
 **Processing**:
-1. Check `TUICK_NESTED` env var
+1. Check `TUICK_PORT` env var
    - If set: run as nested mode (output blocks)
    - If not: continue to simple mode
 2. Detect tool from command
@@ -181,7 +181,7 @@ User presses ctrl-r in fzf
 
 **Processing**:
 1. Detect build system from command OR use explicit `--top`
-2. Set `TUICK_NESTED=1`
+2. Set `TUICK_PORT=<port>` and `TUICK_API_KEY=<key>`
 3. Run build command subprocess
 4. Parse mixed stream (two-layer):
    - **Layer 1**: Split at `\x02` and `\x03` markers
@@ -203,7 +203,7 @@ User presses ctrl-r in fzf
 ### Nested Mode: `tuick --format COMMAND`
 
 **Processing**:
-1. Check `TUICK_NESTED` env var
+1. Check `TUICK_PORT` env var
    - If not set: passthrough (stream command output unchanged)
    - If set: continue
 2. Detect tool from command
@@ -266,13 +266,13 @@ def detect_tool(cmd: list[str]) -> str:
 ### 1. Write xfail integration tests
 - Test 1: Simple mode (`tuick ruff check`)
 - Test 2: Top-format mode (`tuick make` with nested `tuick --format`)
-- Test 3: Format passthrough (`tuick --format` without `TUICK_NESTED`)
+- Test 3: Format passthrough (`tuick --format` without `TUICK_PORT`)
 - Mark as xfail, commit as failing tests
 
 ### 2. Add --format and --top to CLI
 - Route to format_command() and top_command()
 - Options: -f, -e
-- Environment variable: TUICK_NESTED
+- Environment variable: TUICK_PORT (set to port number, not "1")
 
 ### 3. Tool detection (for all modes)
 - `errorformats.py`: ERRORFORMAT_MAP, detect_tool()
@@ -292,18 +292,18 @@ def detect_tool(cmd: list[str]) -> str:
 - Tests: block formation, marker handling
 
 ### 6. Implement format_command (nested mode)
-- Check TUICK_NESTED env var
+- Check TUICK_PORT env var
 - Passthrough if not set
 - Parse and output with markers if set
 - Remove xfail from Test 3
 
 ### 7. Implement top_command (orchestrator mode)
-- Set TUICK_NESTED=1
+- Set TUICK_PORT=<port>, TUICK_API_KEY=<key>
 - Two-layer parsing: split markers, parse build-system blocks
 - Auto-detect build systems
 - Remove xfail from Test 2
 
-### 8. Update default command for TUICK_NESTED
+### 8. Update default command for TUICK_PORT
 - Check env var in main flow
 - Output blocks if set, launch fzf if not
 - Remove xfail from Test 1
