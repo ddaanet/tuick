@@ -503,7 +503,6 @@ def format_blocks(blocks: list[tuple[str, str, str, str]]) -> str:
     return "".join(format_block(*b) for b in blocks)
 
 
-@pytest.mark.xfail(reason="Task 9: fzf delimiter config not implemented")
 def test_errorformat_simple_mode() -> None:
     """Simple mode: flake8 → errorformat JSONL → fzf with field delimiters."""
     sequence: list[str] = []

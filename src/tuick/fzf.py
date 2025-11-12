@@ -47,12 +47,13 @@ def open_fzf_process(
         action = f"execute-silent({callbacks.message_prefix} {message})"
         return [f"{event}:{'+' if plus else ''}{action}"]
 
+    select_action = f"{callbacks.select_prefix} {{1}} {{2}} {{3}} {{4}} {{5}}"
     fzf_bindings = [
         f"start:change-header({user_interface.running_header})",
         f"start:+execute-silent({callbacks.start_command})",
         f"load:change-header({user_interface.header})",
         *binding_verbose("load", "LOAD", plus=True),
-        f"enter,right:execute({callbacks.select_prefix} {{}})",
+        f"enter,right:execute({select_action})",
         f"r:change-header({user_interface.running_header})",
         *binding_verbose("r", "RELOAD", plus=True),
         f"r:+reload({callbacks.reload_command})",
@@ -70,6 +71,7 @@ def open_fzf_process(
         *("fzf", "--listen", "--read0", "--track"),
         *("--no-sort", "--reverse", "--header-border"),
         *("--ansi", *color_opt, "--highlight-line", "--wrap"),
+        *("--delimiter=\x1f", "--with-nth=6"),
         *("--disabled", "--no-input", "--bind"),
         ",".join(fzf_bindings),
     ]
