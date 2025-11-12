@@ -487,13 +487,13 @@ def test_cli_abort_after_initial_terminated_prints_nothing(
 
 
 def format_block(file: str, line: str, col: str, text: str) -> str:
-    r"""Format block: file\x1fline\x1fcol\x1f\x1f\x1ftext."""
-    return f"{file}\x1f{line}\x1f{col}\x1f\x1f\x1f{text}"
+    r"""Format block: file\x1fline\x1fcol\x1f\x1f\x1ftext\0."""
+    return f"{file}\x1f{line}\x1f{col}\x1f\x1f\x1f{text}\0"
 
 
 def format_blocks(blocks: list[tuple[str, str, str, str]]) -> str:
-    r"""Format blocks with \0 separators (no trailing \0)."""
-    return "\0".join(format_block(*b) for b in blocks)
+    r"""Format null-terminated blocks."""
+    return "".join(format_block(*b) for b in blocks)
 
 
 @pytest.mark.xfail(reason="errorformat integration not implemented")

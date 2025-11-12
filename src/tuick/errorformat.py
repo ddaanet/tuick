@@ -147,3 +147,10 @@ def parse_with_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:
             stripped_to_original.get(line, line) for line in entry.lines
         ]
         yield format_block_from_entry(entry)
+
+
+def wrap_blocks_with_markers(blocks: Iterable[str]) -> Iterator[str]:
+    r"""Wrap blocks with \x02 and \x03 markers."""
+    yield "\x02"
+    yield from blocks
+    yield "\x03"
