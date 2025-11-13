@@ -16,34 +16,22 @@ from .test_parser import (
     "blocks",
     [
         pytest.param(MYPY_BLOCKS, id="simple"),
-        pytest.param(
-            MYPY_FANCY_BLOCKS,
-            id="fancy",
-            marks=pytest.mark.xfail(reason="needs block grouping by location"),
-        ),
+        pytest.param(MYPY_FANCY_BLOCKS, id="fancy"),
         pytest.param(MYPY_ABSOLUTE_BLOCKS, id="absolute"),
-        pytest.param(
-            MYPY_VERY_FANCY_BLOCKS[:-1],
-            id="very_fancy",
-            marks=pytest.mark.xfail(reason="needs block grouping by location"),
-        ),
+        pytest.param(MYPY_VERY_FANCY_BLOCKS, id="very_fancy"),
     ],
 )
 def test_parse_with_errorformat_mypy(blocks: list[str]) -> None:
     """Integration test: parse mypy output produces one block per location."""
     input_text = "\n".join((*blocks, ""))
     input_lines = input_text.splitlines(keepends=True)
-    result = list(parse_with_errorformat("mypy", input_lines))
+    result = "".join(parse_with_errorformat("mypy", input_lines))
 
-    # Should produce one block per input block (same count)
-    assert len(result) == len(blocks)
-
-    # Each result block should contain all lines from input block
-    for i, block in enumerate(blocks):
-        # Extract content field (after 5 \x1f delimiters)
-        content = result[i].split("\x1f")[5].rstrip("\0")
-        # Content should match original block
-        assert content == block.rstrip("\n") or content in block
+    result_lines = [
+        block.split("\x1f")[5] for block in result.strip("\0").split("\0")
+    ]
+    expected_lines = [block.rstrip() for block in blocks]
+    assert result_lines == expected_lines
 
 
 def test_parse_with_errorformat_flake8() -> None:

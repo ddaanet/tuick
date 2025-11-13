@@ -34,9 +34,12 @@ for line in sys.stdin:
     lnum = d.get("lnum", 0)
     col = d.get("col", 0)
     valid = d.get("valid", False)
+    typ = d.get("type", "")
+    typ_char = chr(typ) if typ else ""
+    text = d.get("text", "")
     lines = d.get("lines", [])
     nlines = len(lines)
-    print(f"f={f!r} l={lnum!r} c={col!r} v={valid!r} #={nlines!r}")
+    print(f"f={f!r} l={lnum!r} c={col!r} t={typ_char!r} v={valid!r} #={nlines!r} text={text!r}")
     if show_lines and lines:
         for i, matched_line in enumerate(lines):
             print(f"  [{i}]: {matched_line!r}")

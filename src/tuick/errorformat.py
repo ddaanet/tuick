@@ -5,7 +5,7 @@ import re
 import shutil
 import subprocess
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from tuick.ansi import strip_ansi
 from tuick.tool_registry import (
@@ -110,6 +110,79 @@ def run_errorformat(
             continue
 
 
+def group_entries_by_location(  # noqa: C901, PLR0912
+    entries: Iterable[ErrorformatEntry],
+) -> Iterator[ErrorformatEntry]:
+    """Group errorformat entries by location.
+
+    Notes (entries without line numbers) are merged with following errors from
+    the same file. Entries with the same (filename, lnum, col) are grouped
+    together.
+    """
+    pending_note: ErrorformatEntry | None = None
+    pending_block: ErrorformatEntry | None = None
+
+    for entry in entries:
+        if not entry.lnum:
+            # Context note entry - buffer or replace
+            if pending_note and pending_note.filename != entry.filename:
+                # Different file - keep only the new note.
+                # That should not happen, being defensive.
+                yield pending_note
+                pending_note = entry
+            elif pending_note:
+                # Same file - merge
+                pending_note = replace(
+                    pending_note, lines=pending_note.lines + entry.lines
+                )
+            else:
+                pending_note = entry
+        else:
+            # Location entry
+            if pending_note:
+                if pending_note.filename != entry.filename:
+                    # Pending note does not match file, flush
+                    yield pending_note
+                else:
+                    # Pending note with matching file, swallow
+                    entry = replace(  # noqa: PLW2901
+                        entry, lines=pending_note.lines + entry.lines
+                    )
+                pending_note = None
+
+            loc = (entry.filename, entry.lnum, entry.col)
+            pending_loc = (
+                (pending_block.filename, pending_block.lnum, pending_block.col)
+                if pending_block
+                else None
+            )
+
+            if pending_loc == loc:
+                # Same location - merge
+                assert pending_block is not None
+                pending_block = replace(
+                    pending_block, lines=pending_block.lines + entry.lines
+                )
+            else:
+                # New location - flush pending block
+                if pending_block:
+                    yield pending_block
+                # Start new block, attach note if same file
+                if pending_note and pending_note.filename == entry.filename:
+                    pending_block = replace(
+                        entry, lines=pending_note.lines + entry.lines
+                    )
+                    pending_note = None
+                else:
+                    pending_block = entry
+
+    # Flush remaining
+    if pending_block:
+        yield pending_block
+    if pending_note:
+        yield pending_note
+
+
 def format_block_from_entry(entry: ErrorformatEntry) -> str:
     r"""Format errorformat entry as tuick block.
 
@@ -142,7 +215,13 @@ def parse_with_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:
             yield stripped
 
     # Parse with errorformat using stripped lines
-    for entry in run_errorformat(tool, strip_and_track(lines)):
+    entries = run_errorformat(tool, strip_and_track(lines))
+
+    # Group entries by location (merges notes with errors)
+    if tool == "mypy":
+        entries = group_entries_by_location(entries)
+
+    for entry in entries:
         # Restore original colored lines from mapping
         entry.lines = [
             stripped_to_original.get(line, line) for line in entry.lines

@@ -337,3 +337,6 @@
   BEFORE designing interfaces. Verify actual tool behavior (argument passing,
   quoting, field substitution, etc.) rather than assuming. Incorrect
   assumptions lead to redesign work.
+- **Testing tool integrations**: Use helper scripts (like `fmt_ef.py`) to test
+  patterns with actual tool output before writing integration code. Run real
+  examples through different pattern combinations to verify behavior.

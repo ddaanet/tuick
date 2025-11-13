@@ -1,11 +1,5 @@
 # Tuick Task List
 
-- **Group errorformat entries by location**: errorformat splits multi-line
-  blocks into separate entries (mypy note lines, continuation lines). Add
-  post-processing in parse_with_errorformat() to group entries by location.
-  Attach note: lines (no line number) to next error at same file. See
-  test_parse_with_errorformat_mypy[fancy/very_fancy] xfail tests.
-
 - **Port existing parser patterns to errorformat**: parser.py contains regex
   patterns for ruff, pytest, mypy notes, etc. Port these to errorformat
   patterns in tool_registry.py (BUILTIN_TOOLS or CUSTOM_PATTERNS).
@@ -16,6 +10,9 @@
   - Errorformat may drop invalid lines (but never adds lines)
   - Match ASCII output lines to original ANSI input lines sequentially
   - Simple forward-scan algorithm sufficient (no full diff needed)
+
+- REF[med]: Refactor group_entries_by_location() to reduce complexity (C901,
+  PLR0912). Extract helper functions or simplify branching logic.
 
 - REF[med]: Refactor main() to reduce complexity (C901, PLR0912: 17 > 12).
   Extract routing logic or use pattern matching.

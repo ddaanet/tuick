@@ -17,10 +17,14 @@ CUSTOM_PATTERNS: dict[str, list[str]] = {}
 # mypy - built-in doesn't handle --show-column-numbers or multi-line blocks
 OVERRIDE_PATTERNS: dict[str, list[str]] = {
     "mypy": [
-        "%E%f:%l:%c: %m",  # file:line:col: msg (start multi-line error)
-        "%E%f:%l: %m",  # file:line: msg (start multi-line error)
-        "%+C    %.%#",  # continuation: 4 spaces + anything
-        "%G%.%#",  # general/informational lines (preserved)
+        # file:line:col:end_line:end_col: type: msg
+        "%E%f:%l:%c:%e:%k: %t%*[a-z]: %m",
+        "%E%f:%l:%c: %t%*[a-z]: %m",  # file:line:col: type: msg
+        "%E%f:%l: %t%*[a-z]: %m",  # file:line: type: msg
+        "%I%f: %t%*[a-z]: %m",  # file: type: msg (note, no line number)
+        "%GFound %.%# error%.%# in %.%# file%.%#",  # error summary
+        "%GSuccess: no issues found%.%#",  # success summary
+        "%C%.%#",  # continuation (indented and wrapped)
     ],
 }
 
