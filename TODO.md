@@ -28,10 +28,10 @@
   8. ✓ Update default command (check TUICK_PORT)
   9. ✓ Update fzf integration (delimiter config)
   10. ✓ Update select_command (receive fields from fzf)
-  11. Update reload_command (propagate mode/format through callbacks)
-      - Critical: reload_command already uses split_blocks() via _process_output_and_yield_raw()
-      - Errorformat integration in split_blocks() works for both list and reload
-      - Ensure CallbackCommands includes --format/--top in reload binding
+  11. ✓ Update reload_command (propagate --top through callbacks)
+      - Added explicit_top parameter to CallbackCommands
+      - Preserves explicit --top flag in reload binding
+      - Auto-detected build systems rely on auto-detection (no --top in binding)
   12. Documentation (README, codebase-map, errorformat-guide)
 
   **Block format**: `file\x1fline\x1fcol\x1fend-line\x1fend-col\x1fcontent\0`

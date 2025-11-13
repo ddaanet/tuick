@@ -287,6 +287,61 @@ def test_cli_reload_option(console_out: ConsoleFixture) -> None:
             sock.sendall(f"secret: {api_key}\nshutdown\n".encode())
 
 
+def test_reload_binding_default_mode(console_out: ConsoleFixture) -> None:
+    """Default mode: reload binding excludes --top flag."""
+    sequence: list[str] = []
+    cmd_proc = make_cmd_proc(sequence, "mypy", ["src/a.py:1: error\n"])
+    ef_jsonl = ['{"filename":"src/a.py","lnum":1}\n']
+    ef_proc = make_errorformat_proc(sequence, ef_jsonl)
+    fzf_proc = make_fzf_proc(sequence)
+    with (
+        patch_popen(sequence, [cmd_proc, ef_proc, fzf_proc]) as mock,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        runner.invoke(app, ["--", "mypy", "src/"])
+    fzf_cmd = " ".join(mock.call_args.args[0])
+    assert "reload(" in fzf_cmd
+    assert "--top" not in fzf_cmd
+
+
+def test_reload_binding_explicit_top_flag(
+    console_out: ConsoleFixture,
+) -> None:
+    """Explicit --top: reload binding includes --top flag."""
+    sequence: list[str] = []
+    cmd_proc = make_cmd_proc(
+        sequence, "make", ["\x02a.c\x1f1\x1f\x1f\x1f\x1ferr\0\x03"]
+    )
+    fzf_proc = make_fzf_proc(sequence)
+    with (
+        patch_popen(sequence, [cmd_proc, fzf_proc]) as mock,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        runner.invoke(app, ["--top", "--", "make"])
+    fzf_cmd = " ".join(mock.call_args.args[0])
+    assert "reload(" in fzf_cmd
+    assert "--top" in fzf_cmd
+
+
+def test_reload_binding_autodetect_excludes_top(
+    console_out: ConsoleFixture,
+) -> None:
+    """Auto-detected build system: reload binding excludes --top."""
+    sequence: list[str] = []
+    cmd_proc = make_cmd_proc(
+        sequence, "make", ["\x02a.c\x1f1\x1f\x1f\x1f\x1ferr\0\x03"]
+    )
+    fzf_proc = make_fzf_proc(sequence)
+    with (
+        patch_popen(sequence, [cmd_proc, fzf_proc]) as mock,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        runner.invoke(app, ["--", "make"])
+    fzf_cmd = " ".join(mock.call_args.args[0])
+    assert "reload(" in fzf_cmd
+    assert "--top" not in fzf_cmd
+
+
 def test_cli_select_plain(console_out: ConsoleFixture) -> None:
     """--select option opens editor at location and prints nothing."""
     with (

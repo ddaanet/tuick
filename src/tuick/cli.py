@@ -154,7 +154,9 @@ def main(  # noqa: PLR0913, C901, PLR0912
 class CallbackCommands:
     """Utility class for generating CLI callback commands."""
 
-    def __init__(self, command: list[str], *, verbose: bool) -> None:
+    def __init__(
+        self, command: list[str], *, verbose: bool, explicit_top: bool = False
+    ) -> None:
         """Initialize callback commands."""
         # Shorten the command name if it is the same as the default
         myself = sys.argv[0]
@@ -163,9 +165,9 @@ class CallbackCommands:
             myself = Path(myself).name
 
         verbose_flag = ["-v"] if verbose else []
-
-        # Used by MonitorThread and fzf
-        reload_words = [myself, *verbose_flag, "--reload", "--", *command]
+        top_flag = ["--top"] if explicit_top else []
+        reload_opts = [*verbose_flag, *top_flag, "--reload"]
+        reload_words = [myself, *reload_opts, "--", *command]
         self.reload_command = quote_command(reload_words)
 
         # Used only by fzf
@@ -175,7 +177,11 @@ class CallbackCommands:
 
 
 def list_command(  # noqa: C901
-    command: list[str], *, verbose: bool = False, top_mode: bool = False
+    command: list[str],
+    *,
+    verbose: bool = False,
+    top_mode: bool = False,
+    explicit_top: bool = False,
 ) -> None:
     """List errors from running COMMAND.
 
@@ -183,8 +189,11 @@ def list_command(  # noqa: C901
         command: Command to run
         verbose: Enable verbose output
         top_mode: If True, use two-layer parsing for build systems
+        explicit_top: If True, include --top flag in reload binding
     """
-    callbacks = CallbackCommands(command, verbose=verbose)
+    callbacks = CallbackCommands(
+        command, verbose=verbose, explicit_top=explicit_top
+    )
     user_interface = FzfUserInterface(command)
 
     with contextlib.ExitStack() as stack:
@@ -504,7 +513,7 @@ def format_command(command: list[str]) -> None:
 
 def top_command(command: list[str], *, verbose: bool = False) -> None:
     """Top mode: orchestrate nested tuick commands with TUICK_PORT set."""
-    list_command(command, verbose=verbose, top_mode=True)
+    list_command(command, verbose=verbose, top_mode=True, explicit_top=True)
 
 
 def _parse_top_mode(

@@ -73,7 +73,9 @@
 - Write only necessary code for required use cases
 - Do not write speculative and boilerplate code
 - All other things being equal, prefer code that takes fewer lines
-- Consider intermediate variables where they make code more compact
+- Consider intermediate variables where they make code more compact. For
+  command-line options/flags, extract meaningful intermediate lists like
+  `reload_opts`, `verbose_flag` that represent cohesive option sets
 - Do not write trivial docstrings, except for important public objects
 - Helper function docstrings must not exceed implementation length. One-line
   docstrings for simple helpers. Detailed Args/Returns only for public APIs.
@@ -120,6 +122,12 @@
 - Optional parameters: don't make parameters optional if they're always provided
   at call sites. Simpler to require them. Use `Optional` only for truly optional
   values.
+- Separate intent from behavior: when a feature can be triggered explicitly or
+  implicitly (e.g., `--top` flag vs auto-detected build system), use separate
+  parameters for user intent vs implementation behavior. Example: `explicit_top`
+  (preserve flag in bindings) vs `top_mode` (use top-mode parsing). Prevents
+  unintended propagation when auto-detection and explicit flags must behave
+  differently.
 
 ## Testing
 
@@ -208,6 +216,10 @@
 - Mock data tracking: when tracking mock calls in tests, avoid using `!r` repr
   formatting which adds extra quotes. Use `f"event:{data}"` not
   `f"event:{data!r}"` for cleaner assertions.
+- ALWAYS check for existing test helpers before writing mock setup. Use
+  `patch_popen()`, `make_cmd_proc()`, `make_fzf_proc()` etc. Never manually
+  construct mocks that helpers already provide. Grep test files for helper
+  functions if unsure what exists.
 
 ### Test Synchronization
 
