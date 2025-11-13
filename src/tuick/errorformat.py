@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import typing
 from dataclasses import dataclass, replace
 
@@ -44,7 +45,7 @@ class ErrorformatEntry:
     valid: bool
 
 
-def run_errorformat(
+def run_errorformat(  # noqa: C901
     tool: str, input_lines: Iterable[str]
 ) -> Iterator[ErrorformatEntry]:
     """Run errorformat subprocess, yield parsed entries.
@@ -82,32 +83,45 @@ def run_errorformat(
         text=True,
     )
 
-    input_text = "".join(input_lines)
-    stdout, stderr = proc.communicate(input_text)
+    # Stream input to errorformat stdin in background thread
+    def write_input() -> None:
+        assert proc.stdin is not None
+        try:
+            for line in input_lines:
+                proc.stdin.write(line)
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+
+    writer = threading.Thread(target=write_input, daemon=True)
+    writer.start()
+
+    # Stream output from errorformat stdout
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        if not line.strip():
+            continue
+        data = json.loads(line)
+        yield ErrorformatEntry(
+            filename=data.get("filename", ""),
+            lnum=data.get("lnum") or None,
+            col=data.get("col") or None,
+            end_lnum=data.get("end_lnum") or None,
+            end_col=data.get("end_col") or None,
+            lines=data.get("lines", []),
+            text=data.get("text", ""),
+            type=data.get("type", ""),
+            valid=data.get("valid", False),
+        )
+
+    writer.join()
+    proc.wait()
 
     if proc.returncode != 0:
+        stderr = proc.stderr.read() if proc.stderr else ""
         raise subprocess.CalledProcessError(
             proc.returncode, cmd, stderr=stderr
         )
-
-    for line in stdout.splitlines():
-        if not line.strip():
-            continue
-        try:
-            data = json.loads(line)
-            yield ErrorformatEntry(
-                filename=data.get("filename", ""),
-                lnum=data.get("lnum") or None,
-                col=data.get("col") or None,
-                end_lnum=data.get("end_lnum") or None,
-                end_col=data.get("end_col") or None,
-                lines=data.get("lines", []),
-                text=data.get("text", ""),
-                type=data.get("type", ""),
-                valid=data.get("valid", False),
-            )
-        except json.JSONDecodeError:
-            continue
 
 
 def group_entries_by_location(  # noqa: C901, PLR0912
@@ -191,7 +205,12 @@ def format_block_from_entry(entry: ErrorformatEntry) -> str:
     text = "\n".join(entry.lines)
     line_str = str(entry.lnum) if entry.lnum is not None else ""
     col_str = str(entry.col) if entry.col is not None else ""
-    return f"{entry.filename}\x1f{line_str}\x1f{col_str}\x1f\x1f\x1f{text}\0"
+    end_line_str = str(entry.end_lnum) if entry.end_lnum is not None else ""
+    end_col_str = str(entry.end_col) if entry.end_col is not None else ""
+    return (
+        f"{entry.filename}\x1f{line_str}\x1f{col_str}\x1f"
+        f"{end_line_str}\x1f{end_col_str}\x1f{text}\0"
+    )
 
 
 def parse_with_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:

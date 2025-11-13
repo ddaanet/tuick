@@ -140,39 +140,21 @@ def patch_popen(sequence: list[str], procs: list[Mock]) -> Any:  # noqa: ANN401
 
 
 def test_cli_default_launches_fzf() -> None:
-    """Default command streams data incrementally to fzf stdin."""
+    """Default command streams data through errorformat to fzf stdin."""
     sequence: list[str] = []
-
-    def cmd_stdout() -> Iterator[str]:
-        for line in ["test.py:1: error\n", "test.py:2: warning\n"]:
-            sequence.append(f"read:{line.strip()}")
-            yield line
-        sequence.append("stopiteration")
-
-    cmd_proc = create_autospec(subprocess.Popen, instance=True)
-    cmd_proc.returncode = 0
-    cmd_proc.stdout = cmd_stdout()
-    cmd_proc.__enter__.side_effect = track(
-        sequence, "command:enter", ret=cmd_proc
-    )
-    cmd_proc.__exit__.side_effect = track(sequence, "command:exit", ret=False)
-
-    fzf_proc = create_autospec(subprocess.Popen, instance=True)
-    fzf_proc.returncode = 0
-    fzf_proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
-    fzf_proc.__enter__.side_effect = track(sequence, "fzf:enter", ret=fzf_proc)
-    fzf_proc.__exit__.side_effect = track(sequence, "fzf:exit", ret=False)
-    fzf_proc.stdin.write.side_effect = lambda d: (
-        sequence.append(f"write:{d}"),  # type: ignore[func-returns-value]
-        None,
-    )[1]
-    fzf_proc.stdin.close.side_effect = track(sequence, "close")
+    cmd_proc = make_cmd_proc(sequence, "command", [])
+    errorformat_jsonl = [
+        '{"filename":"test.py","lnum":1,"col":0,"text":"error",'
+        '"lines":["test.py:1: error"]}\n',
+        '{"filename":"test.py","lnum":2,"col":0,"text":"warning",'
+        '"lines":["test.py:2: warning"]}\n',
+    ]
+    errorformat_proc = make_errorformat_proc(sequence, errorformat_jsonl)
+    fzf_proc = make_fzf_proc(sequence)
 
     with (
-        patch(
-            "tuick.cli.subprocess.Popen",
-            autospec=True,
-            side_effect=[cmd_proc, fzf_proc],
+        patch_popen(
+            sequence, [cmd_proc, errorformat_proc, fzf_proc]
         ) as popen_mock,
         patch("tuick.cli.MonitorThread"),
     ):
@@ -180,19 +162,27 @@ def test_cli_default_launches_fzf() -> None:
 
     assert popen_mock.call_args_list[0].args[0] == ["ruff", "check", "src/"]
     assert popen_mock.call_args_list[0].kwargs["stdout"] == subprocess.PIPE
-    assert popen_mock.call_args_list[1].args[0][0] == "fzf"
+    assert popen_mock.call_args_list[1].args[0][0] == "errorformat"
     assert popen_mock.call_args_list[1].kwargs["stdin"] == subprocess.PIPE
+    assert popen_mock.call_args_list[2].args[0][0] == "fzf"
+    assert popen_mock.call_args_list[2].kwargs["stdin"] == subprocess.PIPE
 
     assert sequence == [
+        "popen",
         "command:enter",
-        "read:test.py:1: error",
+        "popen",
+        # Streaming: errorformat reads first JSONL entry
+        'errorformat:{"filename":"test.py","lnum":1,"col":0,"text":"err',
+        "popen",
         "fzf:enter",
-        "write:test.py:1: error",
-        "read:test.py:2: warning",
-        "write:\x00",
-        "write:test.py:2: warning",
-        "stopiteration",
-        "close",
+        # Streaming: write first block to fzf immediately
+        "write:test.py\x1f1\x1f\x1f\x1f\x1ftest.py:1: error\x00",
+        # Streaming: errorformat reads second JSONL entry
+        'errorformat:{"filename":"test.py","lnum":2,"col":0,"text":"war',
+        # Streaming: write second block to fzf immediately
+        "write:test.py\x1f2\x1f\x1f\x1f\x1ftest.py:2: warning\x00",
+        "fzf:close",
+        "command:wait",
         "fzf:exit",
         "command:exit",
     ]
@@ -202,26 +192,23 @@ def test_cli_no_output_no_fzf() -> None:
     """When command produces no output, fzf is not started."""
     sequence: list[str] = []
 
-    cmd_proc = create_autospec(subprocess.Popen, instance=True)
-    cmd_proc.returncode = 0
-    cmd_proc.stdout = iter([])
-    cmd_proc.__enter__.side_effect = track(
-        sequence, "command:enter", ret=cmd_proc
-    )
-    cmd_proc.__exit__.side_effect = track(sequence, "command:exit", ret=False)
+    cmd_proc = make_cmd_proc(sequence, "command", [])
+    errorformat_proc = make_errorformat_proc(sequence, [])
 
     with (
-        patch(
-            "tuick.cli.subprocess.Popen",
-            autospec=True,
-            side_effect=[cmd_proc],
-        ) as popen_mock,
+        patch_popen(sequence, [cmd_proc, errorformat_proc]) as popen_mock,
         patch("tuick.cli.MonitorThread"),
     ):
         runner.invoke(app, ["--", "ruff", "check", "src/"])
 
-    assert popen_mock.call_count == 1
-    assert sequence == ["command:enter", "command:exit"]
+    assert popen_mock.call_count == 2
+    assert sequence == [
+        "popen",
+        "command:enter",
+        "popen",
+        "command:wait",
+        "command:exit",
+    ]
 
 
 def test_cli_reload_option(console_out: ConsoleFixture) -> None:
@@ -262,14 +249,12 @@ def test_cli_reload_option(console_out: ConsoleFixture) -> None:
                 app, ["--reload", "-v", "--", "mypy", "src/"]
             )
         assert result.exit_code == 0
-        # Exact block format: file\x1fline\x1fcol\x1f\x1f\x1ftext\0
+        # Block format: file\x1fline\x1fcol\x1fend_line\x1fend_col\x1ftext\0
         expected = (
             "src/test.py\x1f1\x1f\x1f\x1f\x1fsrc/test.py:1: error: Test\0"
         )
         assert result.stdout == expected
         assert "> Terminating reload command\n" in console_out.getvalue()
-        # Exact sequence: terminate → wait → popen (mypy) → mypy:enter →
-        # popen (errorformat) → mypy output → mypy:exit
         expected_seq = [
             "terminate",
             "wait",
@@ -277,6 +262,7 @@ def test_cli_reload_option(console_out: ConsoleFixture) -> None:
             "mypy:enter",
             "popen",
             "mypy:src/test.py:1: error: Test",
+            'errorformat:{"filename":"src/test.py","lnum":1,"col":0,"lines"',
             "mypy:exit",
         ]
         assert sequence == expected_seq

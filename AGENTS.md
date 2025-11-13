@@ -161,6 +161,12 @@
   one test. Separate tests should test different behaviors, not just different
   inputs. Don't write tests for trivial variations or CLI usage errors.
 - Read error messages: they contain hints or directions
+- Test verification: When testing parsing/transformation, verify ALL output
+  fields, not just content. For location-based parsers, explicitly verify
+  file, line, col, end_line, end_col extraction.
+- Test formatting: Create custom formatters (like format_for_test()) that
+  show differences clearly. Omit empty/default fields to reduce noise.
+  Format complex fields (like multi-line content) with indentation and repr
 - Real tool output: Use actual tool output for test data, not invented examples.
   Run the tool (with various flags/modes) to capture real output. Verify tool
   capabilities (e.g., check errorformat -list) before assuming support. Check

@@ -23,6 +23,12 @@
   - Match ASCII output lines to original ANSI input lines sequentially
   - Simple forward-scan algorithm sufficient (no full diff needed)
 
+- REF[med]: Simplify test_errorformat.py Block construction using optional
+  keyword arguments instead of tuple unpacking. Make tests more readable.
+
+- REF[med]: Refactor run_errorformat() to reduce complexity (C901: 11 > 10).
+  Extract helper functions for thread management and output streaming.
+
 - REF[med]: Refactor group_entries_by_location() to reduce complexity (C901,
   PLR0912). Extract helper functions or simplify branching logic.
 

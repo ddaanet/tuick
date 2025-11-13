@@ -11,7 +11,22 @@ class UnknownToolError(KeyError):
 BUILTIN_TOOLS: set[str] = {"flake8"}
 
 # Custom errorformat patterns for tools without built-in support
-CUSTOM_PATTERNS: dict[str, list[str]] = {}
+CUSTOM_PATTERNS: dict[str, list[str]] = {
+    "pytest": [
+        "%E%f:%l: %m",  # tests/test_search.py:133: ValueError
+        "%G=%#%m%#=%#",  # ===== FAILURES =====
+        "%G_%#%m%#_%#",  # _____ test_name _____
+        "%C%s%m",  # continuation (indented or traceback)
+    ],
+    "ruff": [
+        "%E%f:%l:%c: %m",  # src/file.py:8:1: I001 Message
+        "%E%m",  # I001 [*] Import block is un-sorted
+        "%C  --> %f:%l:%c",  # --> src/file.py:8:1
+        "%C%#--> %f:%l:%c",  # --> src/file.py:8:1 (with dash)
+        "%GFound %n error%.%#",  # Found 12 errors.
+        "%C%s%m",  # continuation (context, help text)
+    ],
+}
 
 # Override patterns for tools with inadequate built-in patterns
 # mypy - built-in doesn't handle --show-column-numbers or multi-line blocks
