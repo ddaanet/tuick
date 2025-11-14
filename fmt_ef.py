@@ -39,7 +39,9 @@ for line in sys.stdin:
     text = d.get("text", "")
     lines = d.get("lines", [])
     nlines = len(lines)
-    print(f"f={f!r} l={lnum!r} c={col!r} t={typ_char!r} v={valid!r} #={nlines!r} text={text!r}")
+    print(
+        f"f={f!r} l={lnum!r} c={col!r} t={typ_char!r} v={valid!r} #={nlines!r}"
+    )
     if show_lines and lines:
         for i, matched_line in enumerate(lines):
             print(f"  [{i}]: {matched_line!r}")
