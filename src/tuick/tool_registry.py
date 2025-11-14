@@ -23,21 +23,22 @@ CUSTOM_PATTERNS: dict[str, list[str]] = {
         # Concise format: src/file.py:8:1: I001 Message
         "%E%f:%l:%c: %m",
         # Full format: error code + message starts multiline block
-        "%E%m",
+        r"%E%[A-Z]\+%[0-9]\+ %.%#",
         # Full format: location line upgrades block with file:line:col
-        "%C  --> %f:%l:%c",
-        "%C%#--> %f:%l:%c",
+        "%C %#--> %f:%l:%c",
         # Full format: code snippet lines (line number | code)
-        "%C%s%\\d%#%s|%m",
-        "%C%s|%m",
-        # Empty line (matched as blank, ends block in grouping)
-        "%G",
-        # Footer: error count
-        "%GFound %n error%.%#",
-        # Footer: all clear
+        r"%C %#%[0-9]%# \+|%.%#",
+        # Full format: optional help message after snippet
+        "%Chelp: %.%#",
+        # Full format: blank line ends block
+        "%Z",
+        # Success summary
         "%GAll checks passed!",
-        # Generic continuation
-        "%C%m",
+        # Failure summary, fixes summary on following line
+        r"%AFound %[0-9]\+ error%.%#",
+        "%CNo fixes available %.%#",
+        r"%C[*] %[0-9]\+ fixable %.%#",
+        "%+C%.%#",
     ],
 }
 
@@ -57,9 +58,8 @@ OVERRIDE_PATTERNS: dict[str, list[str]] = {
 }
 
 # All known tools with errorformat support
-KNOWN_TOOLS: set[str] = (
-    BUILTIN_TOOLS | set(CUSTOM_PATTERNS) | set(OVERRIDE_PATTERNS)
-)
+KNOWN_TOOLS: set[str] = (BUILTIN_TOOLS | set(CUSTOM_PATTERNS)
+                         | set(OVERRIDE_PATTERNS))
 
 # Build systems that orchestrate nested tuick commands
 BUILD_SYSTEMS: set[str] = {"make", "just", "cmake", "ninja"}

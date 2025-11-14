@@ -251,7 +251,6 @@ RUFF_LOCATIONS: dict[str, list[tuple[str, ...]]] = {
 }
 
 
-@pytest.mark.xfail(reason="Task 2: ruff patterns not yet implemented")
 @pytest.mark.parametrize(
     ("test_id", "blocks"),
     [
