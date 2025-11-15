@@ -1,8 +1,20 @@
 # Tuick Task List
 
-- **Port existing parser patterns to errorformat**: parser.py contains regex
-  patterns for ruff, pytest, mypy notes, etc. Port these to errorformat
-  patterns in tool_registry.py (BUILTIN_TOOLS or CUSTOM_PATTERNS).
+- **Add -f/--format-name and -p/--pattern CLI options**: Add options to override
+  autodetected format and patterns. Pass through fzf bindings to reload command
+  (both manual and auto-reload). Update errorformat.py to accept format_name
+  and patterns parameters. Remove fallback to legacy parser. (PLAN.md Task 1)
+
+- **Fix reload to use errorformat**: Update reload_command to use errorformat
+  parsing directly instead of split_blocks_auto(). (PLAN.md Task 2)
+
+- **Remove obsolete parser code and tests**: Move shared test data to
+  tests/test_data.py. Remove legacy parser code (State, LineType,
+  BlockSplitter, split_blocks, split_blocks_auto, get_location). Delete
+  test_parser.py. Update docs. (PLAN.md Tasks 3-6)
+
+- REF[low]: Refactor test_cli.py to use parse_blocks() utility where manually
+  parsing block streams. Search for `split("\0")` patterns in tests.
 
 - Configurable editor commands
 

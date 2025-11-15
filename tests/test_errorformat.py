@@ -1,10 +1,15 @@
 """Tests for errorformat integration."""
 
+import typing
 from dataclasses import dataclass, replace
 
 import pytest
 
-from tuick.errorformat import parse_with_errorformat, split_at_markers
+from tuick.errorformat import (
+    FormatName,
+    parse_with_errorformat,
+    split_at_markers,
+)
 
 from .test_parser import (
     MYPY_ABSOLUTE_BLOCKS,
@@ -54,6 +59,32 @@ class Block:
         return lines
 
 
+class BlockList:
+    """List of blocks with formatting for tests."""
+
+    def __init__(self, blocks: list[Block] | None = None) -> None:
+        """Initialize with list of blocks."""
+        self._blocks = blocks if blocks is not None else []
+
+    def append(self, block: Block) -> None:
+        """Append a block to the list."""
+        self._blocks.append(block)
+
+    def __iter__(self) -> typing.Iterator[Block]:
+        """Iterate over blocks."""
+        return iter(self._blocks)
+
+    def format_for_test(self) -> list[list[str]]:
+        """Format all blocks for readable pytest output."""
+        return [b.format_for_test() for b in self._blocks]
+
+
+def parse_blocks(output: str) -> BlockList:
+    """Parse null-separated block stream into BlockList."""
+    blocks = [Block.from_block(b) for b in output.strip("\0").split("\0") if b]
+    return BlockList(blocks)
+
+
 MYPY_LOCATIONS: dict[str, list[tuple[str, ...]]] = {
     "simple": [
         ("src/jobsearch/search.py", "58"),
@@ -93,7 +124,7 @@ def test_parse_with_errorformat_mypy(test_id: str) -> None:
     locations = MYPY_LOCATIONS[test_id]
     input_text = "\n".join((*blocks, ""))
     input_lines = input_text.splitlines(keepends=True)
-    result = "".join(parse_with_errorformat("mypy", input_lines))
+    result = "".join(parse_with_errorformat(FormatName("mypy"), input_lines))
 
     expected = [
         replace(Block(*loc), content=blocks[i])
@@ -112,7 +143,9 @@ def test_parse_with_errorformat_flake8() -> None:
         "test_flake8.py:2:1: F401 'sys' imported but unused\n",
         "test_flake8.py:5:80: E501 line too long (93 > 79 characters)\n",
     ]
-    result = "".join(parse_with_errorformat("flake8", iter(flake8_output)))
+    result = "".join(
+        parse_with_errorformat(FormatName("flake8"), iter(flake8_output))
+    )
 
     expected = [
         Block("test_flake8.py", "1", "1", "", "", flake8_output[0].rstrip()),
@@ -135,7 +168,9 @@ def test_parse_with_errorformat_flake8_with_ansi() -> None:
         "\x1b[36m:\x1b[m \x1b[1m\x1b[31mF401\x1b[m 'sys' imported "
         "but unused\n",
     ]
-    result = "".join(parse_with_errorformat("flake8", iter(flake8_colored)))
+    result = "".join(
+        parse_with_errorformat(FormatName("flake8"), iter(flake8_colored))
+    )
 
     expected = [
         Block("test_flake8.py", "1", "1", "", "", flake8_colored[0].rstrip()),
@@ -222,7 +257,7 @@ def test_parse_with_errorformat_pytest(
     locations = PYTEST_LOCATIONS[test_id]
     input_text = "\n".join((*blocks, ""))
     input_lines = input_text.splitlines(keepends=True)
-    result = "".join(parse_with_errorformat("pytest", input_lines))
+    result = "".join(parse_with_errorformat(FormatName("pytest"), input_lines))
 
     expected = [
         replace(Block(*loc), content=blocks[i])
@@ -263,7 +298,7 @@ def test_parse_with_errorformat_ruff(test_id: str, blocks: list[str]) -> None:
     locations = RUFF_LOCATIONS[test_id]
     input_text = "\n".join((*blocks, ""))
     input_lines = input_text.splitlines(keepends=True)
-    result = "".join(parse_with_errorformat("ruff", input_lines))
+    result = "".join(parse_with_errorformat(FormatName("ruff"), input_lines))
 
     expected = [
         replace(Block(*loc), content=blocks[i])

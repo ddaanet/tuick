@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from tuick.ansi import strip_ansi
-from tuick.errorformat import parse_with_errorformat
+from tuick.errorformat import FormatName, parse_with_errorformat
 from tuick.tool_registry import detect_tool, is_known_tool
 
 if typing.TYPE_CHECKING:
@@ -270,7 +270,7 @@ def split_blocks(lines: Iterable[str]) -> Iterator[str]:
 
 def split_blocks_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:
     r"""Split lines into \0-separated blocks using errorformat."""
-    yield from parse_with_errorformat(tool, lines)
+    yield from parse_with_errorformat(FormatName(tool), lines)
 
 
 def split_blocks_auto(

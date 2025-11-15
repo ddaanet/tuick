@@ -5,9 +5,10 @@ import io
 import socket
 import subprocess
 import sys
+import typing
 from io import StringIO
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 from unittest.mock import ANY, Mock, create_autospec, patch
 
 import pytest
@@ -16,6 +17,7 @@ import typer.testing
 from tuick.cli import app
 from tuick.reload_socket import ReloadSocketServer
 
+from .test_errorformat import Block, BlockList, parse_blocks
 from .test_parser import MYPY_BLOCKS
 
 if TYPE_CHECKING:
@@ -116,6 +118,7 @@ def make_errorformat_proc(
             yield line
 
     proc.stdout = stdout_iter()
+    proc.wait.return_value = returncode
 
     proc.__enter__.side_effect = track(sequence, "errorformat:enter", ret=proc)
     proc.__exit__.side_effect = track(sequence, "errorformat:exit", ret=False)
@@ -137,6 +140,49 @@ def patch_popen(sequence: list[str], procs: list[Mock]) -> Any:  # noqa: ANN401
         return proc
 
     return patch("tuick.cli.subprocess.Popen", side_effect=popen_factory)
+
+
+def patch_popen_selective(
+    sequence: list[str], mock_map: dict[str, Mock]
+) -> Any:  # noqa: ANN401
+    """Patch Popen to mock specific commands, passthrough others."""
+    original_popen = subprocess.Popen
+    calls: list[tuple[list[str], dict[str, typing.Any]]] = []
+
+    def popen_factory(args, **kwargs):  # noqa: ANN001, ANN003
+        calls.append((args, kwargs))
+        cmd = args[0] if args else ""
+        if cmd in mock_map:
+            sequence.append("popen")
+            return mock_map[cmd]
+        return original_popen(args, **kwargs)
+
+    ctx_cli = patch("tuick.cli.subprocess.Popen", side_effect=popen_factory)
+    ctx_ef = patch(
+        "tuick.errorformat.subprocess.Popen", side_effect=popen_factory
+    )
+    ctx_cli.calls = calls  # type: ignore[attr-defined]
+
+    class MultiPatch:
+        def __enter__(self) -> Self:
+            ctx_cli.__enter__()
+            ctx_ef.__enter__()
+            return self
+
+        def __exit__(self, *args):  # noqa: ANN002, ANN204
+            ctx_ef.__exit__(*args)
+            ctx_cli.__exit__(*args)
+
+    result = MultiPatch()
+    result.calls = calls  # type: ignore[attr-defined]
+    return result
+
+
+def get_command_calls(
+    calls: list[tuple[list[str], dict[str, typing.Any]]], cmd: str
+) -> list[list[str]]:
+    """Get argument lists for command from Popen calls."""
+    return [c[0] for c in calls if c[0] and c[0][0] == cmd]
 
 
 def test_cli_default_launches_fzf() -> None:
@@ -302,6 +348,7 @@ def test_reload_binding_explicit_top_flag(
     with (
         patch_popen(sequence, [cmd_proc, fzf_proc]) as mock,
         patch("tuick.cli.MonitorThread"),
+        patch("tuick.cli.get_errorformat_builtin_formats", return_value=set()),
     ):
         runner.invoke(app, ["--top", "--", "make"])
     fzf_cmd = " ".join(mock.call_args.args[0])
@@ -321,6 +368,7 @@ def test_reload_binding_autodetect_excludes_top(
     with (
         patch_popen(sequence, [cmd_proc, fzf_proc]) as mock,
         patch("tuick.cli.MonitorThread"),
+        patch("tuick.cli.get_errorformat_builtin_formats", return_value=set()),
     ):
         runner.invoke(app, ["--", "make"])
     fzf_cmd = " ".join(mock.call_args.args[0])
@@ -598,16 +646,16 @@ def test_errorformat_top_mode() -> None:
     cmd_proc = make_cmd_proc(sequence, "make", make_lines)
     fzf_proc = make_fzf_proc(sequence)
 
+    mock_map = {"make": cmd_proc, "fzf": fzf_proc}
     with (
-        patch(
-            "tuick.cli.subprocess.Popen",
-            side_effect=[cmd_proc, fzf_proc],
-        ) as mock,
+        patch_popen_selective(sequence, mock_map) as popen_ctx,
         patch("tuick.cli.MonitorThread"),
     ):
         runner.invoke(app, ["--", "make"])
 
-    assert "TUICK_PORT" in mock.call_args_list[0].kwargs["env"]
+    make_calls = get_command_calls(popen_ctx.calls, "make")
+    assert len(make_calls) == 1
+    assert "TUICK_PORT" in popen_ctx.calls[0][1]["env"]
 
     expected = format_blocks(
         [
@@ -702,3 +750,83 @@ def test_errorformat_missing_shows_error(
     output = console_out.getvalue()
     assert "errorformat not found" in output
     assert "go install" in output
+
+
+def test_format_name_and_pattern_exclusive(
+    console_out: ConsoleFixture,
+) -> None:
+    """-f and -p options are mutually exclusive."""
+    args = ["-f", "mypy", "-p", "%f:%l: %m", "--", "mypy", "src/"]
+    result = runner.invoke(app, args)
+    assert result.exit_code != 0
+    output = console_out.getvalue()
+    assert "mutually exclusive" in output
+
+
+def test_unsupported_tool_without_options(console_out: ConsoleFixture) -> None:
+    """Unsupported tool without -f or -p shows error."""
+    with patch("tuick.tool_registry.detect_tool", return_value="unsupported"):
+        result = runner.invoke(app, ["--", "unsupported", "src/"])
+    assert result.exit_code != 0
+    output = console_out.getvalue()
+    assert "not supported" in output
+    assert "-f/--format-name" in output or "-p/--pattern" in output
+
+
+def test_custom_pattern_option(console_out: ConsoleFixture) -> None:
+    """Using -p with custom patterns."""
+    sequence: list[str] = []
+    fzf_proc = make_fzf_proc(sequence)
+
+    with (
+        patch_popen_selective(sequence, {"fzf": fzf_proc}) as popen_ctx,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        args = ["-p", "%f:%l: %m", "--", "echo", "file.txt:1: error"]
+        result = runner.invoke(app, args)
+
+    assert result.exit_code == 0
+
+    # Verify errorformat called with custom pattern
+    ef_calls = get_command_calls(popen_ctx.calls, "errorformat")
+    assert ef_calls == [["errorformat", "-w=jsonl", "%f:%l: %m"]]
+
+    # Verify output format with location properly extracted
+    writes = [
+        s.removeprefix("write:") for s in sequence if s.startswith("write:")
+    ]
+    actual = parse_blocks("".join(writes))
+    expected_block = Block("file.txt", "1", content="file.txt:1: error")
+    expected_format = BlockList([expected_block]).format_for_test()
+    assert actual.format_for_test() == expected_format
+
+
+def test_format_name_option(console_out: ConsoleFixture) -> None:
+    """Using -f to override autodetected format."""
+    sequence: list[str] = []
+    fzf_proc = make_fzf_proc(sequence)
+
+    with (
+        patch_popen_selective(sequence, {"fzf": fzf_proc}) as popen_ctx,
+        patch("tuick.cli.MonitorThread"),
+    ):
+        args = ["-f", "mypy", "--", "echo", "file.py:42: error: Incompatible"]
+        result = runner.invoke(app, args)
+
+    assert result.exit_code == 0
+
+    # Verify errorformat uses override patterns (not -name=mypy)
+    ef_calls = get_command_calls(popen_ctx.calls, "errorformat")
+    assert len(ef_calls) == 1
+    assert ef_calls[0][0] == "errorformat"
+    assert ef_calls[0][1] == "-w=jsonl"
+    assert ef_calls[0][2].startswith("%E")  # Custom pattern
+
+    # Verify output format with location properly extracted
+    writes = [
+        s.removeprefix("write:") for s in sequence if s.startswith("write:")
+    ]
+    actual = parse_blocks("".join(writes))
+    expected_content = "file.py:42: error: Incompatible"
+    expected = BlockList([Block("file.py", "42", content=expected_content)])
+    assert actual.format_for_test() == expected.format_for_test()

@@ -10,8 +10,15 @@ class UnknownToolError(KeyError):
 # Tools using errorformat built-in patterns (-name=tool)
 BUILTIN_TOOLS: set[str] = {"flake8"}
 
+# Build system stub: groups all output into informative blocks
+stub_build_format = ["%C%m", "%A%m"]
+
 # Custom errorformat patterns for tools without built-in support
 CUSTOM_PATTERNS: dict[str, list[str]] = {
+    "make": stub_build_format,
+    "just": stub_build_format,
+    "cmake": stub_build_format,
+    "ninja": stub_build_format,
     "pytest": [
         "%E%f:%l: %m",  # tests/test_search.py:133: ValueError
         "%E%f:%l: ",  # 'tests/test_search.py:142: '
@@ -58,8 +65,9 @@ OVERRIDE_PATTERNS: dict[str, list[str]] = {
 }
 
 # All known tools with errorformat support
-KNOWN_TOOLS: set[str] = (BUILTIN_TOOLS | set(CUSTOM_PATTERNS)
-                         | set(OVERRIDE_PATTERNS))
+KNOWN_TOOLS: set[str] = (
+    BUILTIN_TOOLS | set(CUSTOM_PATTERNS) | set(OVERRIDE_PATTERNS)
+)
 
 # Build systems that orchestrate nested tuick commands
 BUILD_SYSTEMS: set[str] = {"make", "just", "cmake", "ninja"}

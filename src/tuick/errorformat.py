@@ -1,5 +1,6 @@
 """Errorformat integration for parsing tool output."""
 
+import functools
 import json
 import re
 import shutil
@@ -30,6 +31,23 @@ class ErrorformatNotFoundError(Exception):
         )
 
 
+@dataclass(frozen=True)
+class FormatName:
+    """Errorformat configuration using a named format."""
+
+    format_name: str
+
+
+@dataclass(frozen=True)
+class CustomPatterns:
+    """Errorformat configuration using custom patterns."""
+
+    patterns: list[str]
+
+
+type FormatConfig = FormatName | CustomPatterns
+
+
 @dataclass
 class ErrorformatEntry:
     """Parsed entry from errorformat JSONL output."""
@@ -45,13 +63,29 @@ class ErrorformatEntry:
     valid: bool
 
 
+@functools.cache
+def get_errorformat_builtin_formats() -> set[str]:
+    """Get list of formats supported by errorformat -list (cached)."""
+    result = subprocess.run(
+        ["errorformat", "-list"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return {
+        line.split(maxsplit=1)[0]
+        for line in result.stdout.splitlines()
+        if line.strip()
+    }
+
+
 def run_errorformat(  # noqa: C901
-    tool: str, input_lines: Iterable[str]
+    config: FormatConfig, input_lines: Iterable[str]
 ) -> Iterator[ErrorformatEntry]:
     """Run errorformat subprocess, yield parsed entries.
 
     Args:
-        tool: Tool name (mypy, etc.)
+        config: Format configuration (name or custom patterns)
         input_lines: Tool output lines (with ANSI codes)
 
     Yields:
@@ -64,17 +98,24 @@ def run_errorformat(  # noqa: C901
     if shutil.which("errorformat") is None:
         raise ErrorformatNotFoundError
 
-    # Build errorformat command based on tool configuration
+    # Build errorformat command based on configuration
     cmd = ["errorformat", "-w=jsonl"]
-    if tool in OVERRIDE_PATTERNS:
-        cmd.extend(OVERRIDE_PATTERNS[tool])
-    elif tool in CUSTOM_PATTERNS:
-        cmd.extend(CUSTOM_PATTERNS[tool])
-    elif tool in BUILTIN_TOOLS:
-        cmd.append(f"-name={tool}")
-    else:
-        msg = f"Unknown tool: {tool} (is_known_tool() should be checked first)"
-        raise AssertionError(msg)
+    match config:
+        case CustomPatterns(patterns):
+            cmd.extend(patterns)
+        case FormatName(format_name):
+            if format_name in OVERRIDE_PATTERNS:
+                cmd.extend(OVERRIDE_PATTERNS[format_name])
+            elif format_name in CUSTOM_PATTERNS:
+                cmd.extend(CUSTOM_PATTERNS[format_name])
+            elif (
+                format_name in BUILTIN_TOOLS
+                or format_name in get_errorformat_builtin_formats()
+            ):
+                cmd.append(f"-name={format_name}")
+            else:
+                msg = f"Unknown format: {format_name}"
+                raise AssertionError(msg)
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
@@ -293,11 +334,13 @@ def group_pytest_entries(  # noqa: C901, PLR0912
         yield pending
 
 
-def parse_with_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:
+def parse_with_errorformat(
+    config: FormatConfig, lines: Iterable[str]
+) -> Iterator[str]:
     """Parse tool output with errorformat, yield block chunks.
 
     Args:
-        tool: Tool name matching errorformat -name option
+        config: Format configuration (name or custom patterns)
         lines: Tool output lines (may contain ANSI codes)
 
     Yields:
@@ -314,13 +357,15 @@ def parse_with_errorformat(tool: str, lines: Iterable[str]) -> Iterator[str]:
             yield stripped
 
     # Parse with errorformat using stripped lines
-    entries = run_errorformat(tool, strip_and_track(lines))
+    entries = run_errorformat(config, strip_and_track(lines))
 
-    # Group entries by location (merges notes with errors)
-    if tool == "mypy":
-        entries = group_entries_by_location(entries)
-    elif tool == "pytest":
-        entries = group_pytest_entries(entries)
+    # Apply tool-specific grouping for known formats
+    match config:
+        case FormatName(format_name):
+            if format_name == "mypy":
+                entries = group_entries_by_location(entries)
+            elif format_name == "pytest":
+                entries = group_pytest_entries(entries)
 
     for entry in entries:
         # Restore original colored lines from mapping

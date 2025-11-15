@@ -35,17 +35,18 @@ from tuick.editor import (
     get_editor_from_env,
 )
 from tuick.errorformat import (
+    CustomPatterns,
     ErrorformatNotFoundError,
+    FormatConfig,
+    FormatName,
+    get_errorformat_builtin_formats,
     parse_with_errorformat,
     split_at_markers,
     wrap_blocks_with_markers,
 )
 from tuick.fzf import FzfUserInterface, open_fzf_process
 from tuick.monitor import MonitorThread
-from tuick.parser import (
-    FileLocation,
-    split_blocks_auto,
-)
+from tuick.parser import FileLocation
 from tuick.reload_socket import ReloadSocketServer
 from tuick.shell import quote_command
 from tuick.tool_registry import detect_tool, is_build_system, is_known_tool
@@ -60,6 +61,62 @@ app = typer.Typer()
 
 class ProcessTerminatedError(Exception):
     """Raised when a command process is terminated before completing."""
+
+
+def _create_format_config(
+    command: list[str], format_name: str, pattern: list[str] | None
+) -> FormatConfig:
+    """Create FormatConfig from CLI options, with validation.
+
+    Args:
+        command: Command to run
+        format_name: User-provided format name (or empty string)
+        pattern: User-provided patterns (or None)
+
+    Returns:
+        FormatConfig object
+
+    Raises:
+        typer.Exit: If options are invalid or tool is unsupported
+    """
+    # Validate mutual exclusivity
+    if format_name and pattern:
+        print_error(
+            None,
+            "Options -f/--format-name and -p/--pattern are mutually exclusive",
+        )
+        raise typer.Exit(1)
+
+    # Use custom patterns if provided
+    if pattern:
+        return CustomPatterns(patterns=pattern)
+
+    # Use provided format name or autodetect
+    tool = format_name if format_name else detect_tool(command)
+
+    # Build systems accepted (stub: groups all output into info blocks)
+    if is_build_system(tool):
+        return FormatName(format_name=tool)
+
+    # Validate tool is supported
+    if (
+        not is_known_tool(tool)
+        and tool not in get_errorformat_builtin_formats()
+    ):
+        if format_name:
+            msg = (
+                f"Format '{tool}' not supported. "
+                "Use -p/--pattern for custom patterns."
+            )
+        else:
+            msg = (
+                f"Tool '{tool}' not supported. "
+                "Use -f/--format-name or -p/--pattern."
+            )
+        print_error(None, msg)
+        raise typer.Exit(1)
+
+    return FormatName(format_name=tool)
 
 
 @app.command()
@@ -88,6 +145,18 @@ def main(  # noqa: PLR0913, C901, PLR0912
     verbose: bool = typer.Option(
         False, "-v", "--verbose", help="Show verbose output"
     ),
+    format_name: str = typer.Option(
+        "",
+        "-f",
+        "--format-name",
+        help="Override autodetected errorformat name",
+    ),
+    pattern: list[str] | None = typer.Option(
+        None,
+        "-p",
+        "--pattern",
+        help="Custom errorformat pattern(s)",
+    ),
 ) -> None:
     """Tuick: Text User Interface for Compilers and checkers."""
     with tuick.console.setup_log_file():
@@ -110,7 +179,8 @@ def main(  # noqa: PLR0913, C901, PLR0912
             print_error(None, "No command specified")
 
         if reload:
-            reload_command(command)
+            config = _create_format_config(command, format_name, pattern)
+            reload_command(command, config)
         elif select:
             select_command(command)
         elif start:
@@ -118,25 +188,24 @@ def main(  # noqa: PLR0913, C901, PLR0912
         elif message:
             message_command(message)
         elif format:
-            format_command(command)
+            config = _create_format_config(command, format_name, pattern)
+            format_command(command, config)
         elif top:
-            top_command(command, verbose=verbose)
+            config = _create_format_config(command, format_name, pattern)
+            top_command(command, config, verbose=verbose)
         else:
+            config = _create_format_config(command, format_name, pattern)
             # Check if we're being called from a top-mode orchestrator
             tuick_port = os.environ.get("TUICK_PORT")
             if tuick_port:
                 # Output structured blocks (nested behavior)
-                tool = detect_tool(command)
-                if not is_known_tool(tool):
-                    msg = f"Tool '{tool}' not supported."
-                    print_error(None, msg)
-                    raise typer.Exit(1)
-
                 try:
                     cmd_proc = _create_command_process(command)
                     with cmd_proc:
                         assert cmd_proc.stdout is not None
-                        blocks = parse_with_errorformat(tool, cmd_proc.stdout)
+                        blocks = parse_with_errorformat(
+                            config, cmd_proc.stdout
+                        )
                         for chunk in wrap_blocks_with_markers(blocks):
                             _write_block_and_maybe_flush(sys.stdout, chunk)
                 except ErrorformatNotFoundError as error:
@@ -144,18 +213,28 @@ def main(  # noqa: PLR0913, C901, PLR0912
                     raise typer.Exit(1) from error
             else:
                 # Auto-detect build systems and use top mode
-                tool = detect_tool(command)
-                if is_build_system(tool):
-                    list_command(command, verbose=verbose, top_mode=True)
-                else:
-                    list_command(command, verbose=verbose)
+                match config:
+                    case FormatName(format_name):
+                        if is_build_system(format_name):
+                            list_command(
+                                command, config, verbose=verbose, top_mode=True
+                            )
+                        else:
+                            list_command(command, config, verbose=verbose)
+                    case CustomPatterns():
+                        list_command(command, config, verbose=verbose)
 
 
 class CallbackCommands:
     """Utility class for generating CLI callback commands."""
 
     def __init__(
-        self, command: list[str], *, verbose: bool, explicit_top: bool = False
+        self,
+        command: list[str],
+        config: FormatConfig,
+        *,
+        verbose: bool,
+        explicit_top: bool = False,
     ) -> None:
         """Initialize callback commands."""
         # Shorten the command name if it is the same as the default
@@ -164,9 +243,18 @@ class CallbackCommands:
         if default and Path(default).resolve() == Path(myself).resolve():
             myself = Path(myself).name
 
+        # Build format options
+        format_opts: list[str] = []
+        match config:
+            case CustomPatterns(patterns):
+                for pattern in patterns:
+                    format_opts.extend(["-p", pattern])
+            case FormatName(format_name):
+                format_opts = ["-f", format_name]
+
         verbose_flag = ["-v"] if verbose else []
         top_flag = ["--top"] if explicit_top else []
-        reload_opts = [*verbose_flag, *top_flag, "--reload"]
+        reload_opts = [*verbose_flag, *top_flag, "--reload", *format_opts]
         reload_words = [myself, *reload_opts, "--", *command]
         self.reload_command = quote_command(reload_words)
 
@@ -178,6 +266,7 @@ class CallbackCommands:
 
 def list_command(  # noqa: C901
     command: list[str],
+    config: FormatConfig,
     *,
     verbose: bool = False,
     top_mode: bool = False,
@@ -187,12 +276,13 @@ def list_command(  # noqa: C901
 
     Args:
         command: Command to run
+        config: Format configuration
         verbose: Enable verbose output
         top_mode: If True, use two-layer parsing for build systems
         explicit_top: If True, include --top flag in reload binding
     """
     callbacks = CallbackCommands(
-        command, verbose=verbose, explicit_top=explicit_top
+        command, config, verbose=verbose, explicit_top=explicit_top
     )
     user_interface = FzfUserInterface(command)
 
@@ -236,10 +326,9 @@ def list_command(  # noqa: C901
                 yield line
 
         if top_mode:
-            tool = detect_tool(command)
-            chunks = _parse_top_mode(tool, raw_and_split())
+            chunks = _parse_top_mode(config, raw_and_split())
         else:
-            chunks = split_blocks_auto(command, raw_and_split())
+            chunks = parse_with_errorformat(config, raw_and_split())
 
         try:
             # Read first chunk to check if there's any output
@@ -330,15 +419,13 @@ def _create_command_process(
 
 
 def _process_output_and_yield_raw(
-    process: subprocess.Popen[str], output: typing.TextIO, command: list[str]
+    process: subprocess.Popen[str],
+    output: typing.TextIO,
+    config: FormatConfig,
 ) -> typing.Iterator[str]:
-    """Read process output, write blocks to output, yield raw output.
-
-    Writes null-separated blocks to output (for fzf stdin or stdout). Yields
-    raw output immediately as blocks are read (for saving to file).
-    """
+    """Read process output, write blocks to output, yield raw output."""
     assert process.stdout
-    for block in split_blocks_auto(command, process.stdout):
+    for block in parse_with_errorformat(config, process.stdout):
         _write_block_and_maybe_flush(output, block)
         yield block
     print_verbose("  Command exit:", process.returncode)
@@ -386,7 +473,7 @@ def start_command() -> None:
     _send_to_tuick_server(f"fzf_port: {fzf_port}", "ok")
 
 
-def reload_command(command: list[str]) -> None:
+def reload_command(command: list[str], config: FormatConfig) -> None:
     """Notify parent, wait for go, run command and save output."""
     try:
         _send_to_tuick_server("reload", "go")
@@ -403,7 +490,7 @@ def reload_command(command: list[str]) -> None:
 
             with _create_command_process(command) as process:
                 raw_output = _process_output_and_yield_raw(
-                    process, sys.stdout, command
+                    process, sys.stdout, config
                 )
                 for chunk in _buffer_chunks(raw_output):
                     data_bytes = chunk.encode("utf-8")
@@ -481,7 +568,7 @@ def message_command(message: str) -> None:
         print_warning("  Reload produced no output")
 
 
-def format_command(command: list[str]) -> None:
+def format_command(command: list[str], config: FormatConfig) -> None:
     """Format mode: parse and output structured blocks if TUICK_NESTED=1."""
     tuick_nested = os.environ.get("TUICK_NESTED")
 
@@ -493,17 +580,11 @@ def format_command(command: list[str]) -> None:
         sys.exit(proc.returncode)
 
     # Nested mode: parse with errorformat and output structured blocks
-    tool = detect_tool(command)
-    if not is_known_tool(tool):
-        msg = f"Tool '{tool}' not supported. Use --format with known tools."
-        print_error(None, msg)
-        raise typer.Exit(1)
-
     try:
         cmd_proc = _create_command_process(command)
         with cmd_proc:
             assert cmd_proc.stdout is not None
-            blocks = parse_with_errorformat(tool, cmd_proc.stdout)
+            blocks = parse_with_errorformat(config, cmd_proc.stdout)
             for chunk in wrap_blocks_with_markers(blocks):
                 _write_block_and_maybe_flush(sys.stdout, chunk)
     except ErrorformatNotFoundError as error:
@@ -511,34 +592,24 @@ def format_command(command: list[str]) -> None:
         raise typer.Exit(1) from error
 
 
-def top_command(command: list[str], *, verbose: bool = False) -> None:
+def top_command(
+    command: list[str], config: FormatConfig, *, verbose: bool = False
+) -> None:
     """Top mode: orchestrate nested tuick commands with TUICK_PORT set."""
-    list_command(command, verbose=verbose, top_mode=True, explicit_top=True)
+    list_command(
+        command, config, verbose=verbose, top_mode=True, explicit_top=True
+    )
 
 
 def _parse_top_mode(
-    tool: str, lines: typing.Iterable[str]
+    config: FormatConfig, lines: typing.Iterable[str]
 ) -> typing.Iterator[str]:
-    """Parse top mode output with two-layer algorithm.
-
-    Args:
-        tool: Build system tool name for parsing non-nested output
-        lines: Command output lines
-
-    Yields:
-        Block chunks (null-terminated)
-    """
+    """Parse top mode output with two-layer algorithm."""
     for is_nested, content in split_at_markers(lines):
         if is_nested:
-            # Nested blocks from tuick --format commands pass through as-is
             yield content
         elif content.strip():
-            # Build-system output: parse with errorformat if supported
-            if is_known_tool(tool):
-                yield from parse_with_errorformat(tool, [content])
-            else:
-                # No errorformat pattern: output as informational block
-                yield f"\x1f\x1f\x1f\x1f\x1f{content.rstrip()}\0"
+            yield from parse_with_errorformat(config, [content])
 
 
 if __name__ == "__main__":
