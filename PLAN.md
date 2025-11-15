@@ -28,17 +28,19 @@
 
 **COMMITTED** b45bd47: ✨ Add -f/--format-name and -p/--pattern CLI options
 
-## Task 2: Update reload_command to use errorformat parsing
+## ✅ Task 2: Update reload_command to use errorformat parsing (COMPLETED)
 
-### Current state:
-- `reload_command()` calls `_process_output_and_yield_raw()` (cli.py:405)
-- `_process_output_and_yield_raw()` calls `split_blocks_auto()` (cli.py:341)
-- `split_blocks_auto()` dispatches to errorformat OR legacy parser
+### Verification findings:
+- `reload_command()` already calls `_process_output_and_yield_raw()` (cli.py:492)
+- `_process_output_and_yield_raw()` already calls `parse_with_errorformat(config, ...)` (cli.py:428)
+- FormatConfig properly flows: `main()` → `_create_format_config()` → `reload_command(command, config)` → `_process_output_and_yield_raw(process, output, config)`
+- No legacy parser fallback in reload path
+- All reload tests pass
 
-### Changes:
-- Replace `split_blocks_auto()` call with direct errorformat parsing
-- Use new -f/-p options if provided
-- Remove legacy fallback path
+### Implementation:
+- Already uses errorformat parsing directly
+- Already respects -f/-p options via FormatConfig parameter
+- No changes needed - this task was completed in prior work
 
 ## Task 3: Remove legacy parser code from parser.py
 

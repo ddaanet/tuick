@@ -1,8 +1,5 @@
 # Tuick Task List
 
-- **Fix reload to use errorformat**: Update reload_command to use errorformat
-  parsing directly instead of split_blocks_auto(). (PLAN.md Task 2)
-
 - **Remove obsolete parser code and tests**: Move shared test data to
   tests/test_data.py. Remove legacy parser code (State, LineType,
   BlockSplitter, split_blocks, split_blocks_auto, get_location). Delete
