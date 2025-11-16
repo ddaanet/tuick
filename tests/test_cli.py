@@ -664,7 +664,7 @@ def test_errorformat_top_mode() -> None:
 
 
 def test_errorformat_format_passthrough() -> None:
-    """Format mode without TUICK_NESTED: passthrough to stdout."""
+    """Format mode without TUICK_PORT: passthrough to stdout."""
     sequence: list[str] = []
     mypy_lines = [MYPY_BLOCKS[0] + "\n"]
     cmd_proc = make_cmd_proc(sequence, "mypy", mypy_lines)
@@ -688,7 +688,7 @@ def test_errorformat_format_passthrough() -> None:
 
 
 def test_errorformat_format_structured() -> None:
-    r"""Format mode with TUICK_NESTED=1: output \x02blocks\x03."""
+    r"""Format mode with TUICK_PORT set: output \x02blocks\x03."""
     sequence: list[str] = []
     mypy_lines = [MYPY_BLOCKS[0] + "\n", MYPY_BLOCKS[1] + "\n"]
     cmd_proc = make_cmd_proc(sequence, "mypy", mypy_lines)
@@ -706,7 +706,7 @@ def test_errorformat_format_structured() -> None:
         patch(
             "tuick.cli.subprocess.Popen", side_effect=[cmd_proc, ef_proc]
         ) as mock,
-        patch.dict("os.environ", {"TUICK_NESTED": "1"}),
+        patch.dict("os.environ", {"TUICK_PORT": "1"}),
     ):
         result = runner.invoke(app, ["--format", "--", "mypy", "src/"])
 
@@ -740,7 +740,7 @@ def test_errorformat_missing_shows_error(
 
     with (
         patch("subprocess.Popen", side_effect=popen_factory),
-        patch.dict("os.environ", {"TUICK_NESTED": "1"}),
+        patch.dict("os.environ", {"TUICK_PORT": "1"}),
     ):
         result = runner.invoke(app, ["--format", "--", "mypy", "src/"])
 

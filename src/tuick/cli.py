@@ -569,8 +569,8 @@ def message_command(message: str) -> None:
 
 
 def format_command(command: list[str], config: FormatConfig) -> None:
-    """Format mode: parse and output structured blocks if TUICK_NESTED=1."""
-    tuick_nested = os.environ.get("TUICK_NESTED")
+    """Format mode: parse and output structured blocks if TUICK_PORT set."""
+    tuick_nested = os.environ.get("TUICK_PORT")
 
     if not tuick_nested:
         # Passthrough mode: run command without capturing output
