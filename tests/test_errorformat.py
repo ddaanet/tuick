@@ -195,7 +195,8 @@ def test_split_at_markers() -> None:
 
     expected = [
         (False, "make: Entering 'src'\n"),
-        (True, "block1\0block2\0"),
+        (True, "block1\0"),
+        (True, "block2\0"),
         (False, "make: Done\n"),
         (True, "block3\0"),
     ]
@@ -207,7 +208,7 @@ def test_split_at_markers_no_markers() -> None:
     input_lines = ["line1\n", "line2\n"]
     result = list(split_at_markers(input_lines))
 
-    assert result == [(False, "line1\nline2\n")]
+    assert result == [(False, "line1\n"), (False, "line2\n")]
 
 
 PYTEST_LOCATIONS: dict[str, list[tuple[str, ...]]] = {

@@ -381,17 +381,30 @@ def split_at_markers(lines: Iterable[str]) -> Iterator[tuple[bool, str]]:
         (is_nested, content) tuples where is_nested indicates if content
         came from between markers (True) or outside markers (False).
     """
-    text = "".join(lines)
-    parts = re.split(r"(\x02|\x03)", text)
     in_nested = False
+    buffer: list[str] = []
 
-    for part in parts:
-        if part == "\x02":
-            in_nested = True
-        elif part == "\x03":
-            in_nested = False
-        elif part:  # Non-empty content
-            yield (in_nested, part)
+    def flush() -> str:
+        nonlocal buffer
+        swap, buffer = buffer, []
+        return "".join(swap)
+
+    for line in lines:
+        parts = re.split("(\x00|\x02|\x03|\n)", line)
+        for part in parts:
+            if part == "\x02":
+                in_nested = True
+            elif part == "\x03":
+                in_nested = False
+            else:
+                if part:
+                    buffer.append(part)
+                nested_separator = part == "\x00" and in_nested
+                line_end = part == "\n" and not in_nested
+                if buffer and (nested_separator or line_end):
+                    yield (in_nested, flush())
+    if buffer:
+        yield (in_nested, flush())
 
 
 def wrap_blocks_with_markers(blocks: Iterable[str]) -> Iterator[str]:

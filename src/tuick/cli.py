@@ -53,7 +53,6 @@ from tuick.tool_registry import detect_tool, is_build_system, is_known_tool
 
 app = typer.Typer()
 
-
 # ruff: noqa: FBT001 FBT003 Typer API uses boolean arguments for flags
 # ruff: noqa: B008 function-call-in-default-argument
 # ruff: noqa: TRY301 Error handling refactoring in TODO.md
