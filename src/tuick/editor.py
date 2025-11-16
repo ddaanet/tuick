@@ -37,6 +37,34 @@ class FileLocationNotFoundError(ValueError):
         )
 
 
+class EditorError(Exception):
+    """Base exception for all editor-related errors."""
+
+
+class InvalidLineTemplateError(EditorError):
+    """Error when TUICK_EDITOR_LINE template is invalid."""
+
+    def __init__(self) -> None:
+        """Initialize with predefined message."""
+        super().__init__("Invalid TUICK_EDITOR_LINE template")
+
+
+class InvalidLineColumnTemplateError(EditorError):
+    """Error when TUICK_EDITOR_LINE_COLUMN template is invalid."""
+
+    def __init__(self) -> None:
+        """Initialize with predefined message."""
+        super().__init__("Invalid TUICK_EDITOR_LINE_COLUMN template")
+
+
+class EditorNotConfiguredError(EditorError):
+    """Error when no editor is configured in environment."""
+
+    def __init__(self) -> None:
+        """Initialize with predefined message."""
+        super().__init__("No editor configured in environment")
+
+
 class EditorCommand:
     """Abstract base class for editor commands."""
 
@@ -118,7 +146,7 @@ class EditorSubprocess(EditorCommand):
         return list(self.args)
 
 
-class UnsupportedEditorError(ValueError):
+class UnsupportedEditorError(EditorError):
     """Error when editor is not supported."""
 
     def __init__(self, editor_name: str) -> None:
@@ -349,21 +377,28 @@ def _expand_editor_template(template: str, **kwargs: str | int) -> list[str]:
     return expanded_parts
 
 
-def _validate_templates() -> None:
-    """Validate template environment variables on command start.
+def validate_editor_config() -> None:
+    """Validate editor configuration on command start.
 
-    Tests that templates can be formatted successfully. Catches ValueError and
-    LookupError to detect invalid syntax or placeholders.
+    Validates:
+    - Template environment variables can be formatted successfully
+    - At least one editor is configured (templates or
+      EDITOR/VISUAL/TUICK_EDITOR)
+    - If editor is configured and not supported, at least line template
+      is set
+
+    Raises:
+        EditorError: If validation fails
     """
     line_template = os.environ.get("TUICK_EDITOR_LINE")
     line_col_template = os.environ.get("TUICK_EDITOR_LINE_COLUMN")
 
+    # Validate template syntax if set
     if line_template:
         try:
             _expand_editor_template(line_template, file="test.py", line=1)
         except (ValueError, LookupError) as e:
-            msg = f"Invalid TUICK_EDITOR_LINE template: {e}"
-            raise ValueError(msg) from e
+            raise InvalidLineTemplateError from e
 
     if line_col_template:
         try:
@@ -371,8 +406,24 @@ def _validate_templates() -> None:
                 line_col_template, file="test.py", line=1, column=1
             )
         except (ValueError, LookupError) as e:
-            msg = f"Invalid TUICK_EDITOR_LINE_COLUMN template: {e}"
-            raise ValueError(msg) from e
+            raise InvalidLineColumnTemplateError from e
+
+    # Check if any editor is configured
+    editor = get_editor_from_env()
+    has_templates = bool(line_template or line_col_template)
+
+    if not editor and not has_templates:
+        raise EditorNotConfiguredError
+
+    # If editor is configured, check if it's supported or templates are
+    # available
+    if editor and not has_templates:
+        _, command_and_args = os.path.split(editor)
+        parts = command_and_args.split()
+        editor_name = parts[0]
+
+        # Check if editor is supported (raises UnsupportedEditorError)
+        BaseEditor.get_editor_class(editor_name)
 
 
 class CustomEditor(BaseEditor):
@@ -382,6 +433,8 @@ class CustomEditor(BaseEditor):
 
     def get_command(self, location: FileLocation) -> EditorCommand:
         """Build command from template environment variables."""
+        assert location.row is not None, "FileLocation row must be set"
+
         line_col_template = os.environ.get("TUICK_EDITOR_LINE_COLUMN")
         line_template = os.environ.get("TUICK_EDITOR_LINE")
 
@@ -389,7 +442,7 @@ class CustomEditor(BaseEditor):
             args = _expand_editor_template(
                 line_col_template,
                 file=location.path,
-                line=location.row or 0,
+                line=location.row,
                 column=location.column,
             )
             return EditorSubprocess(args)
@@ -398,7 +451,7 @@ class CustomEditor(BaseEditor):
             args = _expand_editor_template(
                 line_template,
                 file=location.path,
-                line=location.row or 0,
+                line=location.row,
             )
             return EditorSubprocess(args)
 
@@ -438,8 +491,7 @@ def get_editor_command(location: FileLocation) -> EditorCommand:
     )
 
     if not editor:
-        msg = "No editor configured in environment"
-        raise ValueError(msg)
+        raise EditorNotConfiguredError
 
     path_head, command_and_args = os.path.split(editor)
     parts = command_and_args.split()

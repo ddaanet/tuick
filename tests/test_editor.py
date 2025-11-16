@@ -14,9 +14,10 @@ from tuick.editor import (
     EditorSubprocess,
     EditorURL,
     FileLocation,
-    _validate_templates,
+    InvalidLineTemplateError,
     get_editor_command,
     get_editor_from_env,
+    validate_editor_config,
 )
 
 if TYPE_CHECKING:
@@ -414,16 +415,16 @@ def test_empty_template_falls_through() -> None:
 
 
 def test_invalid_template_raises_error() -> None:
-    """Invalid template with wrong placeholders raises ValueError."""
+    """Invalid template with wrong placeholders raises error."""
     with (
         patch.dict(
             os.environ,
             {"TUICK_EDITOR_LINE": "vim {0} {file}"},
             clear=True,
         ),
-        pytest.raises(ValueError, match="Invalid TUICK_EDITOR_LINE"),
+        pytest.raises(InvalidLineTemplateError),
     ):
-        _validate_templates()
+        validate_editor_config()
 
 
 class TestEditorURL:

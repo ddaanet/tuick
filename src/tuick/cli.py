@@ -30,10 +30,10 @@ from tuick.console import (
     set_verbose,
 )
 from tuick.editor import (
+    EditorError,
     FileLocation,
-    UnsupportedEditorError,
-    _validate_templates,
     get_editor_command,
+    validate_editor_config,
 )
 from tuick.errorformat import (
     CustomPatterns,
@@ -513,10 +513,10 @@ def select_command(fields: list[str]) -> None:
     Args:
         fields: List of 5 fields: [file, line, col, end-line, end-col]
     """
-    # Validate templates and editor on command start
+    # Validate editor configuration on command start
     try:
-        _validate_templates()
-    except ValueError as error:
+        validate_editor_config()
+    except EditorError as error:
         print_error(None, str(error))
         raise typer.Exit(1) from error
 
@@ -545,8 +545,8 @@ def select_command(fields: list[str]) -> None:
     # Build editor command
     try:
         editor_command = get_editor_command(location)
-    except (UnsupportedEditorError, ValueError) as error:
-        print_error(None, error)
+    except EditorError as error:
+        print_error(None, str(error))
         raise typer.Exit(1) from error
 
     # Display and execute command
