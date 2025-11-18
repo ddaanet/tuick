@@ -7,12 +7,10 @@ import socket
 import subprocess
 import sys
 import typing
-from io import StringIO
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 from unittest.mock import ANY, Mock, create_autospec, patch
 
-import pytest
 import typer.testing
 
 from tuick.cli import app
@@ -28,7 +26,7 @@ if TYPE_CHECKING:
     # click.testing.Result
     from click.testing import Result as TestingResult
 
-    from .conftest import ConsoleFixture, ServerFixture
+    from .conftest import ConsoleFixture
 
 
 class CliRunner(typer.testing.CliRunner):
@@ -562,78 +560,6 @@ def test_cli_abort_after_initial_load_prints_output(
 
     # Verify mypy was waited before fzf exit
     assert sequence.index("mypy:wait") < sequence.index("fzf:exit")
-
-
-@pytest.mark.xfail(reason="needs proper integration test")
-def test_cli_abort_after_reload_prints_reload_output(
-    server_with_key: ServerFixture,
-) -> None:
-    """On fzf abort after reload, print reload output."""
-    # list_command overwrites saved_output_file
-    saved_file = StringIO("reloaded.py:1: new error\nreloaded.py:2: fixed\n")
-    server_with_key.server.saved_output_file = saved_file  # type: ignore[assignment]
-
-    # Initial load and fzf abort
-    initial_proc = create_autospec(subprocess.Popen, instance=True)
-    initial_proc.returncode = 0
-    initial_proc.stdout = iter(["initial.py:1: error\n"])
-    initial_proc.wait.return_value = None
-
-    fzf_proc = create_autospec(subprocess.Popen, instance=True)
-    fzf_proc.returncode = 130  # User abort
-    fzf_proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
-
-    with (
-        patch(
-            "tuick.cli.subprocess.Popen", side_effect=[initial_proc, fzf_proc]
-        ),
-        patch("tuick.cli.MonitorThread"),
-        patch(
-            "tuick.cli.ReloadSocketServer",
-            return_value=server_with_key.server,
-        ),
-    ):
-        result = runner.invoke(app, ["-v", "--", "mypy", "src/"])
-
-    assert result.exit_code == 0
-
-    # Verify reload output printed (not initial)
-    assert "reloaded.py:1: new error" in result.stdout
-    assert "reloaded.py:2: fixed" in result.stdout
-    assert "initial.py:1: error" not in result.stdout
-
-
-@pytest.mark.xfail(reason="needs proper integration test")
-def test_cli_abort_after_initial_terminated_prints_nothing(
-    server_with_key: ServerFixture,
-) -> None:
-    """On fzf abort after initial terminated, print nothing."""
-    # list_command overwrites saved_output_file
-    # No saved output file (process was terminated before reload)
-    server_with_key.server.saved_output_file = None
-
-    # Initial load and fzf abort
-    initial_proc = create_autospec(subprocess.Popen, instance=True)
-    initial_proc.returncode = 0
-    initial_proc.stdout = iter(["initial.py:1: error\n"])
-    initial_proc.wait.return_value = None
-
-    fzf_proc = create_autospec(subprocess.Popen, instance=True)
-    fzf_proc.returncode = 130  # User abort
-    fzf_proc.stdin = create_autospec(io.TextIOWrapper, instance=True)
-
-    with (
-        patch(
-            "tuick.cli.subprocess.Popen", side_effect=[initial_proc, fzf_proc]
-        ),
-        patch("tuick.cli.MonitorThread"),
-    ):
-        result = runner.invoke(app, ["--", "mypy", "src/"])
-
-    assert result.exit_code == 0
-
-    # Verify nothing printed (no saved output file)
-    assert result.stdout.strip() == ""
 
 
 def format_block(file: str, line: str, col: str, text: str) -> str:
