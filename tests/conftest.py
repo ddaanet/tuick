@@ -63,6 +63,26 @@ def clean_env() -> Iterator[None]:
         yield
 
 
+@pytest.fixture(autouse=True)
+def patch_theme_detection() -> Iterator[None]:
+    """Patch theme detection for all tests.
+
+    Controls theme-related env variables and disables OSC 11 detection for
+    safety and determinism.
+    """
+    theme_env_vars = {
+        "NO_COLOR": "",
+        "CLI_THEME": "",
+        "COLORFGBG": "",
+        "BAT_THEME": "",
+    }
+    with (
+        patch.dict(os.environ, theme_env_vars, clear=False),
+        patch("tuick.theme._detect_via_osc11", return_value=None),
+    ):
+        yield
+
+
 @pytest.fixture
 def console_out() -> Iterator[ConsoleFixture]:
     """Patch console with test console using StringIO (no colors)."""

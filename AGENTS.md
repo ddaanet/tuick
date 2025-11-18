@@ -102,6 +102,10 @@
 - Require Python >=3.14: recursive types, no future, no quotes
 - Write fully typed code with modern hints (`list[T]` not `List[T]`)
 - Keep try blocks minimal to catch only intended errors
+- Exception handling: NEVER use `except Exception: pass` - it hides bugs.
+  Instead, catch specific exceptions around specific statements with minimal
+  scope. Example: wrap only the statement expected to fail, not entire blocks.
+  Use bytes literals (b"\x1b") instead of string.encode().
 - All imports at module level, except there is a specific reason not to
 - Unused parameters: Mark with leading underscore (`_param`) rather than noqa
   comments. More Pythonic and makes intent explicit.
@@ -110,6 +114,10 @@
   transforming exceptions in except blocks. Preserves stack trace and makes
   debugging easier. Example: `except FileNotFoundError as exc: raise
   CustomError from exc`. Follow ruff B904.
+- Enum design: Use `StrEnum` with `auto()` for string enums. For option types
+  with special values, create separate enum (e.g., `ColorTheme` vs
+  `ColorThemeAuto`), then use type alias: `type ColorThemeOption = ColorTheme |
+  ColorThemeAuto`.
 
 ### Type Hints
 
@@ -378,6 +386,11 @@
 
 ## Project-Specific Rules
 
+### Tuick Code Style
+
+- Command strings: Build as list of words, use `" ".join(cmd)` to create
+  string. Factorize building logic with conditionals on list elements.
+
 ### Tuick CLI Testing
 
 - Selective subprocess mocking: Integration tests for CLI need to mock UI
@@ -385,3 +398,7 @@
   Use `patch_popen_selective(mock_map)` that checks command name and returns
   mock or calls real Popen. Patch both cli and errorformat modules. Track
   calls in list attribute for verification.
+- Environment control: Use autouse fixtures to control environment variables
+  that affect test behavior. Example: patch theme detection env vars
+  (NO_COLOR, CLI_THEME, COLORFGBG, BAT_THEME) and disable OSC 11 probing in
+  conftest.py for safety and determinism across all tests.

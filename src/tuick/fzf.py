@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from tuick.console import is_verbose, print_command, print_error, print_success
 from tuick.shell import quote_command
+from tuick.theme import ColorTheme
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,13 +31,23 @@ def _check_bat_installed() -> bool:
     return shutil.which("bat") is not None
 
 
-def _get_preview_command() -> str:
+def _get_preview_command(theme: ColorTheme) -> str:
     """Generate preview command for fzf."""
-    if _check_bat_installed():
-        return (
-            "bat --color=always --style=numbers,grid --highlight-line={2} {1}"
-        )
-    return "echo 'Preview requires bat (https://github.com/sharkdp/bat)'"
+    if not _check_bat_installed():
+        return "echo 'Preview requires bat (https://github.com/sharkdp/bat)'"
+
+    cmd = ["bat"]
+
+    if os.getenv("BAT_THEME"):
+        cmd.append("-f")
+    elif theme == ColorTheme.BW:
+        pass
+    else:
+        cmd.extend(["-f", f"--theme={theme.value}"])
+
+    cmd.extend(["--style=numbers,grid", "--highlight-line={2}", "{1}"])
+
+    return " ".join(cmd)
 
 
 def _get_preview_window_config() -> str:
@@ -57,10 +68,12 @@ def open_fzf_process(
     user_interface: FzfUserInterface,
     tuick_server_info: TuickServerInfo,
     fzf_api_key: str,
+    theme: ColorTheme,
 ) -> Iterator[subprocess.Popen[str]]:
     """Open and manage fzf process."""
     env = os.environ.copy()
-    env["FORCE_COLOR"] = "1"
+    if theme != ColorTheme.BW:
+        env["FORCE_COLOR"] = "1"
     env["TUICK_PORT"] = str(tuick_server_info.port)
     env["TUICK_API_KEY"] = tuick_server_info.api_key
     env["FZF_API_KEY"] = fzf_api_key
@@ -91,16 +104,17 @@ def open_fzf_process(
         "backspace:up",
         "/,ctrl-/:toggle-preview",
     ]
-    if theme := os.getenv("TERM_THEME"):
-        color_opt = ["--color=" + theme]
-    else:
-        color_opt = []
+    color_opt = (
+        ["--no-color"]
+        if theme == ColorTheme.BW
+        else [f"--color={theme.value}"]
+    )
     fzf_cmd = [
         *("fzf", "--listen", "--read0", "--track"),
         *("--no-sort", "--reverse", "--header-border"),
         *("--ansi", *color_opt, "--highlight-line", "--wrap"),
         *("--delimiter=\x1f", "--with-nth=6"),
-        *("--preview", _get_preview_command()),
+        *("--preview", _get_preview_command(theme)),
         *("--preview-window", _get_preview_window_config()),
         *("--disabled", "--no-input", "--bind"),
         ",".join(fzf_bindings),

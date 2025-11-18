@@ -944,7 +944,8 @@ def test_preview_enabled_by_default_with_bat() -> None:
     # Verify preview command includes bat
     preview_cmd = get_option_value(fzf_cmd, "--preview")
     assert "bat" in preview_cmd
-    assert "--color=always" in preview_cmd
+    assert "-f" in preview_cmd
+    assert "--theme=dark" in preview_cmd
     assert "{1}" in preview_cmd  # filename field
     assert "{2}" in preview_cmd  # line number field
 

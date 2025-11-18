@@ -49,6 +49,12 @@ from tuick.fzf import FzfUserInterface, open_fzf_process
 from tuick.monitor import MonitorThread
 from tuick.reload_socket import ReloadSocketServer
 from tuick.shell import quote_command
+from tuick.theme import (
+    ColorTheme,
+    ColorThemeAuto,
+    ColorThemeOption,
+    detect_theme,
+)
 from tuick.tool_registry import detect_tool, is_build_system, is_known_tool
 
 app = typer.Typer()
@@ -155,6 +161,11 @@ def main(  # noqa: PLR0913, C901, PLR0912
     verbose: bool = typer.Option(
         False, "-v", "--verbose", help="Show verbose output"
     ),
+    theme: str = typer.Option(
+        "auto",
+        "--theme",
+        help="Color theme: dark, light, bw, auto",
+    ),
     format_name: str = typer.Option(
         "",
         "-f",
@@ -230,7 +241,11 @@ def main(  # noqa: PLR0913, C901, PLR0912
                 # Auto-detect build systems and use top mode
                 top_mode = _should_use_top_mode(config, explicit_top=False)
                 list_command(
-                    command, config, verbose=verbose, top_mode=top_mode
+                    command,
+                    config,
+                    verbose=verbose,
+                    top_mode=top_mode,
+                    theme=theme,
                 )
 
 
@@ -273,13 +288,14 @@ class CallbackCommands:
         self.message_prefix = quote_command([myself, "--message"])
 
 
-def list_command(  # noqa: C901
+def list_command(  # noqa: C901, PLR0913, PLR0915
     command: list[str],
     config: FormatConfig,
     *,
     verbose: bool = False,
     top_mode: bool = False,
     explicit_top: bool = False,
+    theme: str = "auto",
 ) -> None:
     """List errors from running COMMAND.
 
@@ -289,7 +305,15 @@ def list_command(  # noqa: C901
         verbose: Enable verbose output
         top_mode: If True, use two-layer parsing for build systems
         explicit_top: If True, include --top flag in reload binding
+        theme: Color theme option string
     """
+    theme_option: ColorThemeOption
+    if theme == "auto":
+        theme_option = ColorThemeAuto.AUTO
+    else:
+        theme_option = ColorTheme(theme)
+    resolved_theme = detect_theme(theme_option)
+
     callbacks = CallbackCommands(
         command, config, verbose=verbose, explicit_top=explicit_top
     )
@@ -353,6 +377,7 @@ def list_command(  # noqa: C901
             user_interface,
             reload_server.get_server_info(),
             monitor.fzf_api_key,
+            resolved_theme,
         ) as fzf_proc:
             assert fzf_proc.stdin is not None
 

@@ -1,8 +1,5 @@
 # Tuick Task List
 
-- UX[high]: Probe terminal for background color to determine which theme to
-  choose for fzf and bat. Add option --theme, values auto (default), light, dark to override.
-
 - RELEASE 0.1
 
 - Understand why output on exit appears to work correctly in build system mode.
@@ -44,8 +41,9 @@
 - REF[med]: Refactor main() to reduce complexity (C901, PLR0912: 17 > 12).
   Extract routing logic or use pattern matching.
 
-- REF[med]: Refactor list_command() to reduce complexity (C901: 11 > 10).
-  Extract setup/teardown or use helper functions.
+- REF[med]: Refactor list_command() to reduce complexity (C901, PLR0913,
+  PLR0915). Extract setup/teardown or use helper functions. Theme parameter
+  added, increasing argument count.
 
 - REF[high]: Refactor test_cli.py to reduce verbosity: factorize subprocess
   mocking setup to make tests easier to understand and maintain.
