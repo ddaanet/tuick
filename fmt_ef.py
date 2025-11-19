@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Format errorformat JSONL output for testing.
+r"""Format errorformat JSONL output for testing.
 
 Usage:
     # Show compact summary
