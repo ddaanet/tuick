@@ -218,6 +218,10 @@ tuick dmypy run .
 
 [`dmypy`] runs mypy as a daemon for fast incremental checks.
 
+## License
+
+Tuick is released under the MIT License. See [LICENSE](LICENSE) for details.
+
 [`fzf`]: https://junegunn.github.io/fzf/
 [`errorformat`]: https://github.com/reviewdog/errorformat
 [errorformat built-in patterns]: https://github.com/reviewdog/errorformat
