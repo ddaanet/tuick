@@ -19,6 +19,7 @@ from subprocess import PIPE, STDOUT
 
 import typer
 
+import tuick
 import tuick.console
 from tuick.console import (
     print_command,
@@ -62,6 +63,13 @@ app = typer.Typer()
 # ruff: noqa: FBT001 FBT003 Typer API uses boolean arguments for flags
 # ruff: noqa: B008 function-call-in-default-argument
 # ruff: noqa: TRY301 Error handling refactoring in TODO.md
+
+
+def version_callback(value: bool) -> None:
+    """Print version and exit if --version flag is set."""
+    if value:
+        typer.echo(f"tuick {tuick.__version__}")
+        raise typer.Exit(0)
 
 
 class ProcessTerminatedError(Exception):
@@ -138,6 +146,13 @@ def _create_format_config(
 @app.command()
 def main(  # noqa: PLR0913, C901, PLR0912
     command: list[str] = typer.Argument(default_factory=list),
+    _version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show version and exit",
+        callback=version_callback,
+        is_eager=True,
+    ),
     reload: bool = typer.Option(
         False, "--reload", help="Internal: run command and output blocks"
     ),

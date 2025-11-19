@@ -13,6 +13,7 @@ from unittest.mock import ANY, Mock, create_autospec, patch
 
 import typer.testing
 
+import tuick
 from tuick.cli import app
 from tuick.reload_socket import ReloadSocketServer
 
@@ -925,3 +926,10 @@ def test_preview_shows_error_when_bat_not_installed() -> None:
 
     # Verify preview toggle binding exists
     assert has_preview_toggle_binding(fzf_cmd)
+
+
+def test_version_option() -> None:
+    """--version shows version number and exits."""
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert f"tuick {tuick.__version__}" in result.stdout
