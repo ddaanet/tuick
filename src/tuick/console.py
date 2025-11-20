@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 from typing import IO, TYPE_CHECKING, Any
 
 from rich.console import Console
+from rich.markup import escape
 
 from tuick.editor import EditorCommand
 from tuick.shell import quote_command_words
@@ -61,7 +62,7 @@ def print_entry(command: list[str]) -> None:
 def print_event(message: str) -> None:
     """Print an event message, verbose mode."""
     if _verbose:
-        _console.print("[bold]>", message, style="magenta")
+        _console.print("[bold]>", escape(message), style="magenta")
         _console.file.flush()
 
 
@@ -77,9 +78,9 @@ def print_command(command: list[str] | EditorCommand) -> None:
 
 
 def _style_command(command: list[str]) -> Iterable[str]:
+    escaped = (escape(x) for x in quote_command_words(command))
     return (
-        _style_shell_word(word, first=i == 0)
-        for i, word in enumerate(quote_command_words(command))
+        _style_shell_word(word, first=i == 0) for i, word in enumerate(escaped)
     )
 
 
