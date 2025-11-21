@@ -54,9 +54,6 @@
 
 - REF[med]:Fix uses of generic mocks where specs could be used.
 
-- REF[low]Find type-safe solution to avoid cast in
-  ReloadRequestHandler.handle().
-
 - UX[low]: Use execute-silent for select_command in client editors.
 
 - FEAT[low]: Optimize output handling: use binary files for saved output instead

@@ -7,7 +7,7 @@ import string
 import tempfile
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import io
@@ -31,9 +31,11 @@ def generate_api_key() -> str:
 class ReloadRequestHandler(socketserver.StreamRequestHandler):
     """Handler for reload coordination messages."""
 
+    server: ReloadSocketServer
+
     def handle(self) -> None:  # noqa: C901, PLR0912, PLR0915
         """Process single client connection with authentication."""
-        server = cast("ReloadSocketServer", self.server)
+        server = self.server
 
         # Read authentication line
         auth_line = self.rfile.readline().decode().strip()
