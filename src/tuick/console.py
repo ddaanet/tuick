@@ -23,6 +23,7 @@ TUICK_LOG_FILE = "TUICK_LOG_FILE"
 
 _console = Console(soft_wrap=True, stderr=True)
 _verbose = False
+_trace = False
 
 
 def set_verbose() -> None:
@@ -39,6 +40,13 @@ def is_verbose() -> bool:
 def print_verbose(*args: Any) -> None:  # noqa: ANN401
     """Print general verbose messages."""
     if _verbose:
+        _console.print(*args, style="dim")
+        _console.file.flush()
+
+
+def print_trace(*args: Any) -> None:  # noqa: ANN401
+    """Print trace messages (extra verbose)."""
+    if _trace:
         _console.print(*args, style="dim")
         _console.file.flush()
 

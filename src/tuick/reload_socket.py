@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import io
 
-from tuick.console import print_event, print_exception, print_verbose
+from tuick.console import (
+    print_event,
+    print_exception,
+    print_trace,
+    print_verbose,
+)
 
 if TYPE_CHECKING:
     import subprocess
@@ -37,6 +42,7 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
         """Process single client connection with authentication."""
         server = self.server
 
+        print_trace("Client connected")
         # Read authentication line
         auth_line = self.rfile.readline().decode().strip()
         if not auth_line.startswith("secret: "):
@@ -74,8 +80,10 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
 
             # Signal go to proceed with reload
             self.wfile.write(b"go\n")
+            print_trace("reload -> go")
 
         elif command_line == "begin-output":
+            print_trace("begin-output")
             try:
                 self.server.begin_output()
             except Exception as error:
@@ -83,8 +91,10 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
                 raise
             else:
                 self.wfile.write(b"ok\n")
+                print_trace("begin-output -> ok")
 
         elif command_line == "end-output":
+            print_trace("end-output")
             try:
                 self.server.end_output()
             except Exception as error:
@@ -92,18 +102,22 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
                 raise
             else:
                 self.wfile.write(b"ok\n")
+                print_trace("end-output -> ok")
 
         elif command_line == "save-output":
+            print_trace("save-output")
             while True:
                 # Read length line or 'end' marker
                 line = self.rfile.readline().decode().strip()
 
                 if not line:
                     # Connection closed before 'end', nevermind.
+                    print_trace("save-output no chunk")
                     return
 
                 if line == "end":
                     self.wfile.write(b"ok\n")
+                    print_trace("save-output end -> ok")
                     break
 
                 # Parse length and read that many bytes
@@ -113,16 +127,19 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
                     self.wfile.write(
                         f"error: invalid length: {line!r}\n".encode()
                     )
+                    print_trace("save-output invalid length:", line)
                     return
 
                 # Read exactly 'length' bytes
                 data = self.rfile.read(length)
                 if len(data) != length:
                     # Short read - connection closed
+                    print_trace("save-output short read")
                     return
 
                 try:
                     self.server.save_output_chunk(data.decode("utf-8"))
+                    print_trace(f"save-output chunk ({len(data)} bytes)")
                 except Exception as error:
                     self.wfile.write(f"error: {error}\n".encode())
                     raise
@@ -131,9 +148,11 @@ class ReloadRequestHandler(socketserver.StreamRequestHandler):
             # For test teardown only
             server.should_shutdown = True
             self.wfile.write(b"ok\n")
+            print_trace("server shutdown")
 
         else:
             self.wfile.write(b"error: unknown command\n")
+            print_trace("server unknown command:", command_line)
 
 
 class ReloadSocketServer(socketserver.ThreadingTCPServer):
