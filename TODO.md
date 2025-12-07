@@ -1,5 +1,27 @@
 # Tuick Task List
 
+- TEST[high]: Create tests/test_ansi.py for strip_ansi function - test CSI
+  sequences, SCS G0/G1 (\x1b(B), and Fe sequences. Use example string from
+  commit 74788e6.
+
+- TEST[med]: Add test for TUICK_VERBOSE environment inheritance - verify
+  --verbose sets TUICK_VERBOSE=1 for child processes.
+
+- TEST[med]: Test nested tuick verbosity output - verify bottom tuick
+  (TUICK_LOG_FILE set) appends to log but doesn't dump to stderr on exit.
+
+- TEST[med]: Add test for wrap_blocks_with_markers with empty input - verify no
+  markers output when no blocks.
+
+- TEST[low]: Integration test for nested tuick output collection - verify
+  begin-output/save-output/end-output protocol in reload scenario.
+
+- BUG[low]: Ignore TUICK_VERBOSE in top-level tuick to prevent double
+  initialization if environment variable is pre-set (from commit e7db255 TODO).
+
+- BUG[low]: Review _parse_top_mode change from content.strip() to content -
+  whitespace-only blocks now processed differently. File: src/tuick/cli.py:671
+
 - BUG[med] Do not output block delimiters if a tool produces no output, so
   consecutive commands without output are grouped in one block.
 

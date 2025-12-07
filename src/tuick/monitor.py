@@ -3,6 +3,9 @@
 import subprocess
 import sys
 import threading
+from collections.abc import (
+    Iterable,  # noqa: TC003 dataclass runtime annotation
+)
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,7 +16,7 @@ from tuick.console import print_event, print_verbose
 from tuick.reload_socket import generate_api_key
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterator
 
     from tuick.reload_socket import ReloadSocketServer
 
