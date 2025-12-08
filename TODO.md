@@ -1,9 +1,5 @@
 # Tuick Task List
 
-- TEST[high]: Create tests/test_ansi.py for strip_ansi function - test CSI
-  sequences, SCS G0/G1 (\x1b(B), and Fe sequences. Use example string from
-  commit 74788e6.
-
 - TEST[med]: Add test for TUICK_VERBOSE environment inheritance - verify
   --verbose sets TUICK_VERBOSE=1 for child processes.
 

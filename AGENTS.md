@@ -162,6 +162,10 @@
 - Add tests first, period. Do not fix bugs or add features without a failing
   test first. If identified during implementation, add to TODO.md for test and
   fix together.
+- Post-hoc testing: When writing tests for existing code/fixes, validate tests
+  by reverting the fix, confirming test failure, then restoring the fix and
+  confirming test passes. This ensures tests actually test the intended
+  behavior.
 
 ### Test Execution
 
