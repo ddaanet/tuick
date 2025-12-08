@@ -87,8 +87,9 @@
   to prevent wrapping and reduce vertical space waste.
 - Docstring first line must be concise, details go in body or comments
 - Implementation details belong in comments, not docstrings
-- Complexity suppressions: complexity errors (C901, PLR0912, PLR0915) can be
-  suppressed with noqa if a refactoring task is added to TODO.md
+- Suppressions: ALL noqa/type:ignore suppressions require explanatory comments.
+  Complexity errors (C901, PLR0912, PLR0915) can be suppressed if a refactoring
+  task is added to TODO.md. Other suppressions need inline justification.
 - Streaming: Never buffer entire input in memory when processing iterables.
   Process line-by-line, yield results incrementally. Use generator functions,
   not list() calls that force materialization. MUST maintain streaming:
