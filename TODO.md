@@ -3,9 +3,6 @@
 - TEST[med]: Test nested tuick verbosity output - verify bottom tuick
   (TUICK_LOG_FILE set) appends to log but doesn't dump to stderr on exit.
 
-- TEST[med]: Add test for wrap_blocks_with_markers with empty input - verify no
-  markers output when no blocks.
-
 - TEST[low]: Integration test for nested tuick output collection - verify
   begin-output/save-output/end-output protocol in reload scenario.
 

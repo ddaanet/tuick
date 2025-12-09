@@ -9,6 +9,7 @@ from tuick.errorformat import (
     FormatName,
     parse_with_errorformat,
     split_at_markers,
+    wrap_blocks_with_markers,
 )
 
 from .test_data import (
@@ -209,6 +210,13 @@ def test_split_at_markers_no_markers() -> None:
     result = list(split_at_markers(input_lines))
 
     assert result == [(False, "line1\n"), (False, "line2\n")]
+
+
+def test_wrap_blocks_with_markers_empty() -> None:
+    """wrap_blocks_with_markers() yields nothing for empty input."""
+    result = list(wrap_blocks_with_markers([]))
+
+    assert result == []
 
 
 PYTEST_LOCATIONS: dict[str, list[tuple[str, ...]]] = {
