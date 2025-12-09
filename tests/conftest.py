@@ -92,7 +92,6 @@ def patch_theme_detection() -> Iterator[None]:
 @pytest.fixture
 def console_out() -> Iterator[ConsoleFixture]:
     """Patch console with test console using StringIO (no colors)."""
-    tuick.console._verbose = False
     output = StringIO()
     test_console = Console(file=output, force_terminal=False, soft_wrap=True)
     fixture = ConsoleFixture(output)
