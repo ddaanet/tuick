@@ -56,7 +56,7 @@ _pytest-agent-opts := _pytest-opts + " -p no:icdiff" + _pytest-diff-opt
 
 # Development workflow: check, test
 [group('dev')]
-dev: _fail_if_claudecode compile
+dev: _fail_if_claudecode compile format
     #!/usr/bin/env bash -euo pipefail
     {{ _bash-defs }} {{ _check-body }}
     safe visible $run_dev $tuickf -- pytest {{ _pytest-opts }}
@@ -179,13 +179,14 @@ ruff-fix *ARGS:
 [group('dev')]
 format:
     #!/usr/bin/env bash -euo pipefail
-    {{ _bash-defs }} {{ _format-body }}
+    {{ _bash-defs }}
+    safe visible $run_dev ruff format $python_dirs
+    safe visible $run_dev ruff check --fix --unsafe-fixes --fix-only $python_dirs
+    safe visible $run_dev docformatter --in-place $python_dirs
     end-safe
 
 [private]
 _format-body := '''
-    safe visible $run_dev ruff format $python_dirs
-    safe visible $run_dev docformatter --in-place $python_dirs
 '''
 
 # Create release: tag, build tarball, upload to PyPI and GitHub
