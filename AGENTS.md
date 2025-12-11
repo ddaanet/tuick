@@ -10,6 +10,7 @@
    implementation
 5. **Retrospective**: MANDATORY before commit. Review session, identify
    learnings, update AGENTS.md if needed. DO NOT SKIP.
+   - Retrospective meta-rule: Always capture recurring feedback here. When a reminder repeats (including "remember this"/RMMBR), either add a new rule or reinforce the existing one so future sessions do not need the same reminder.
 6. **Commit**: Short informative message with gitmoji
 
 ## General Rules

@@ -1,7 +1,14 @@
 # Tuick Task List
 
-- TEST[low]: Integration test for nested tuick output collection - verify
-  begin-output/save-output/end-output protocol in reload scenario.
+- TEST[med]: Modify patch_popen and its users to assert that popen argument
+  list is consistent with behavior provided by popen mock.
+
+- REF[med]: Remove needless argument and call tracking from tests. Use Mock
+  special attributes (mock_calls, call_args_list) instead of manual tracking.
+
+- BUG[med]: reload_command should send end-output to finalize saved output file.
+  Currently test_nested_reload_prints_raw_output fails because reload output is
+  not properly finalized.
 
 - BUG[low]: Ignore TUICK_VERBOSE in top-level tuick to prevent double
   initialization if environment variable is pre-set (from commit e7db255 TODO).

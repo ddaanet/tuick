@@ -123,10 +123,8 @@ def server_with_key(console_out: ConsoleFixture) -> Iterator[ServerFixture]:
     """Create server with API key and return fixture."""
     _ = console_out  # Ensure console is patched
     server = ReloadSocketServer()
-    api_key = server.get_server_info().api_key
+    server_info = server.get_server_info()
     server.start()
-    fixture = ServerFixture(server, api_key, server.server_address[1])
-
+    fixture = ServerFixture(server, server_info.api_key, server_info.port)
     yield fixture
-
     fixture.send("shutdown")

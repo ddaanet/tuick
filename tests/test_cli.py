@@ -136,7 +136,9 @@ def make_errorformat_proc(
 def patch_popen(sequence: list[str], procs: list[Mock]) -> Any:  # noqa: ANN401
     """Patch subprocess.Popen to return procs in sequence, tracking 'popen'.
 
-    Returns a context manager that patches subprocess.Popen.
+    Returns a context manager that patches subprocess.Popen. When env kwargs
+    are provided, wraps proc __exit__ side effects to apply environment using
+    patch.dict. Asserts all env values are strings to catch mock pollution.
     """
     index = 0
 
@@ -145,6 +147,32 @@ def patch_popen(sequence: list[str], procs: list[Mock]) -> Any:  # noqa: ANN401
         sequence.append("popen")
         proc = procs[index]
         index += 1
+        env = kwargs.get("env")
+        if env:
+            for k, v in env.items():
+                assert isinstance(v, str), (
+                    f"env value must be str, got: {k}={v!r}"
+                )
+            original_enter = proc.__enter__.side_effect
+            original_exit = proc.__exit__.side_effect
+
+            def wrapped_enter(*args: object, **kwargs: object) -> Mock:
+                if original_enter:
+                    result = original_enter(*args, **kwargs)
+                else:
+                    result = proc
+                return result
+
+            def wrapped_exit(*args: object, **kwargs: object) -> bool:
+                with patch.dict(os.environ, env, clear=False):
+                    if original_exit:
+                        result = original_exit(*args, **kwargs)
+                    else:
+                        result = False
+                return result
+
+            proc.__enter__.side_effect = wrapped_enter
+            proc.__exit__.side_effect = wrapped_exit
         return proc
 
     return patch("subprocess.Popen", side_effect=popen_factory)
@@ -164,6 +192,14 @@ def patch_popen_selective(
         return original_popen(args, **kwargs)
 
     return patch("subprocess.Popen", side_effect=popen_factory)
+
+
+def patch_monitor_thread() -> Any:  # noqa: ANN401
+    """Patch MonitorThread to mock fzf api key."""
+    return patch(
+        "tuick.cli.MonitorThread",
+        return_value=Mock(fzf_api_key="test-api-key"),
+    )
 
 
 def get_command_calls(
@@ -200,7 +236,7 @@ def test_cli_default_launches_fzf() -> None:
         patch_popen(
             sequence, [cmd_proc, errorformat_proc, fzf_proc]
         ) as popen_mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         runner.invoke(app, ["--", "flake8", "src/"])
 
@@ -241,7 +277,7 @@ def test_cli_no_output_no_fzf() -> None:
 
     with (
         patch_popen(sequence, [cmd_proc, errorformat_proc]) as popen_mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         runner.invoke(app, ["--", "ruff", "check", "src/"])
 
@@ -326,7 +362,7 @@ def test_reload_binding_default_mode() -> None:
     fzf_proc = make_fzf_proc(sequence)
     with (
         patch_popen(sequence, [cmd_proc, ef_proc, fzf_proc]) as mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         runner.invoke(app, ["--", "mypy", "src/"])
     fzf_cmd = " ".join(mock.call_args.args[0])
@@ -343,7 +379,7 @@ def test_reload_binding_explicit_top_flag() -> None:
     fzf_proc = make_fzf_proc(sequence)
     with (
         patch_popen(sequence, [cmd_proc, fzf_proc]) as mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
         patch("tuick.cli.get_errorformat_builtin_formats", return_value=set()),
     ):
         runner.invoke(app, ["--top", "--", "make"])
@@ -361,7 +397,7 @@ def test_reload_binding_autodetect_excludes_top() -> None:
     fzf_proc = make_fzf_proc(sequence)
     with (
         patch_popen(sequence, [cmd_proc, fzf_proc]) as mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
         patch("tuick.cli.get_errorformat_builtin_formats", return_value=set()),
     ):
         runner.invoke(app, ["--", "make"])
@@ -484,7 +520,7 @@ def test_verbose_propagates_to_child_processes() -> None:
 
     with (
         patch("subprocess.Popen", side_effect=capture_and_mock),
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         result = runner.invoke(app, ["--verbose", "--", "make"])
 
@@ -551,7 +587,7 @@ def test_nested_verbose_output_not_duplicated() -> None:
 
     with (
         patch_popen_selective(sequence, mock_map),
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         result = runner.invoke(app, ["--", "make"])
 
@@ -657,7 +693,7 @@ def test_cli_abort_after_initial_load_prints_output() -> None:
 
     with (
         patch_popen(sequence, [mypy_proc, ef_proc, fzf_proc]),
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         result = runner.invoke(app, ["--", "mypy", "src/"])
 
@@ -703,7 +739,7 @@ def test_errorformat_simple_mode() -> None:
             "subprocess.Popen",
             side_effect=[cmd_proc, ef_proc, fzf_proc],
         ) as mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         runner.invoke(app, ["--", "flake8", "src/"])
 
@@ -738,7 +774,7 @@ def test_errorformat_top_mode() -> None:
     mock_map = {"make": cmd_proc, "fzf": fzf_proc}
     with (
         patch_popen_selective(sequence, mock_map) as popen_mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         runner.invoke(app, ["--", "make"])
 
@@ -884,7 +920,7 @@ def test_custom_pattern_option() -> None:
 
     with (
         patch_popen_selective(sequence, {"fzf": fzf_proc}) as popen_mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         args = ["-p", "%f:%l: %m", "--", "echo", "file.txt:1: error"]
         result = runner.invoke(app, args)
@@ -912,7 +948,7 @@ def test_format_name_option() -> None:
 
     with (
         patch_popen_selective(sequence, {"fzf": fzf_proc}) as popen_mock,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
     ):
         args = ["-f", "mypy", "--", "echo", "file.py:42: error: Incompatible"]
         result = runner.invoke(app, args)
@@ -977,7 +1013,7 @@ def test_preview_enabled_by_default_with_bat() -> None:
 
     with (
         patch_popen(sequence, make_preview_test_procs(sequence)) as popen,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
         patch("shutil.which", return_value="/usr/bin/bat"),
     ):
         runner.invoke(app, ["--", "flake8", "src/"])
@@ -1007,7 +1043,7 @@ def test_preview_disabled_with_env_var() -> None:
 
     with (
         patch_popen(sequence, make_preview_test_procs(sequence)) as popen,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
         patch("shutil.which", return_value="/usr/bin/bat"),
         patch.dict(os.environ, {"TUICK_PREVIEW": "0"}),
     ):
@@ -1029,7 +1065,7 @@ def test_preview_shows_error_when_bat_not_installed() -> None:
 
     with (
         patch_popen(sequence, make_preview_test_procs(sequence)) as popen,
-        patch("tuick.cli.MonitorThread"),
+        patch_monitor_thread(),
         patch("shutil.which", return_value=None),
     ):
         runner.invoke(app, ["--", "flake8", "src/"])
