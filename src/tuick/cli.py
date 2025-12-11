@@ -557,6 +557,7 @@ def reload_command(
                     _write_block_and_maybe_flush(sys.stdout, block)
 
         print_verbose("  Command exit:", proc.returncode)
+        _send_to_tuick_server("end-output", "ok")
 
     except Exception as error:
         print_error("Reload error:", error)

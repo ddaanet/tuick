@@ -673,6 +673,60 @@ def test_reload_explicit_top_forces_mode() -> None:
     assert kwargs["top_mode"] is True
 
 
+def test_nested_reload_prints_raw_output() -> None:
+    """List mode prints raw output captured from a nested reload."""
+    sequence: list[str] = []
+    initial_lines = ["initial.py:1: error: Initial failure\n"]
+    initial_jsonl = [
+        '{"filename":"initial.py","lnum":1,"col":0,'
+        '"lines":["initial.py:1: error: Initial failure"]}\n'
+    ]
+    reload_lines = ["reload.py:7: error: Reload failure\n"]
+    reload_jsonl = [
+        '{"filename":"reload.py","lnum":7,"col":0,'
+        '"lines":["reload.py:7: error: Reload failure"]}\n'
+    ]
+    initial_cmd_proc = make_cmd_proc(sequence, "mypy", initial_lines)
+    initial_ef_proc = make_errorformat_proc(sequence, initial_jsonl)
+    reload_cmd_proc = make_cmd_proc(sequence, "mypy", reload_lines)
+    reload_ef_proc = make_errorformat_proc(sequence, reload_jsonl)
+    fzf_proc = make_fzf_proc(sequence, returncode=130)
+
+    exit_stub = fzf_proc.__exit__.side_effect
+    reload_results: list[Any] = []
+
+    def exit_with_reload(*args: object) -> bool:
+        result = runner.invoke(app, ["--reload", "--", "mypy", "src/"])
+        assert result.exit_code == 0
+        reload_results.append(result)
+        ret: bool = exit_stub(*args)
+        return ret
+
+    fzf_proc.__exit__.side_effect = exit_with_reload
+
+    procs = [
+        initial_cmd_proc,
+        initial_ef_proc,
+        fzf_proc,
+        reload_cmd_proc,
+        reload_ef_proc,
+    ]
+
+    monitor_mock = Mock()
+    monitor_mock.fzf_api_key = "test-api-key"
+
+    with (
+        patch("tuick.cli.MonitorThread", return_value=monitor_mock),
+        patch_popen(sequence, procs),
+    ):
+        result = runner.invoke(app, ["--", "mypy", "src/"])
+
+    assert result.exit_code == 0
+    assert len(reload_results) == 1
+    assert result.stdout == "".join(reload_lines)
+    assert f"mypy:{reload_lines[0].strip()}" in sequence
+
+
 def test_cli_abort_after_initial_load_prints_output() -> None:
     """On fzf abort (exit 130) after initial load, print initial output."""
     sequence: list[str] = []
