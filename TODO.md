@@ -1,8 +1,5 @@
 # Tuick Task List
 
-- REF[med]: Remove needless argument and call tracking from tests. Use Mock
-  special attributes (mock_calls, call_args_list) instead of manual tracking.
-
 - BUG[low]: Ignore TUICK_VERBOSE in top-level tuick to prevent double
   initialization if environment variable is pre-set (from commit e7db255 TODO).
 

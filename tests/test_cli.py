@@ -10,7 +10,6 @@ import os
 import socket
 import subprocess
 import sys
-import typing
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 from unittest.mock import ANY, Mock, create_autospec, patch
@@ -209,13 +208,6 @@ def patch_monitor_thread() -> Any:  # noqa: ANN401
         "tuick.cli.MonitorThread",
         return_value=Mock(fzf_api_key="test-api-key"),
     )
-
-
-def get_command_calls(
-    calls: list[tuple[list[str], dict[str, typing.Any]]], cmd: str
-) -> list[list[str]]:
-    """Get argument lists for command from Popen calls."""
-    return [c[0] for c in calls if c[0] and c[0][0] == cmd]
 
 
 def get_command_calls_from_mock(mock: Mock, cmd: str) -> list[list[str]]:
@@ -510,29 +502,20 @@ def test_verbose_propagates_to_child_processes() -> None:
     fzf_proc = make_fzf_proc(sequence)
     mock_map = {"make": cmd_proc, "fzf": fzf_proc}
 
-    # Capture env passed to make
-    captured_env: dict[str, str] = {}
-    original_popen = subprocess.Popen
-
-    def capture_and_mock(args, **kwargs):  # noqa: ANN001, ANN003
-        cmd = args[0] if args else ""
-        if cmd == "make":
-            captured_env.update(kwargs.get("env", {}))
-            sequence.append("popen")
-            return mock_map[cmd]
-        if cmd == "fzf":
-            sequence.append("popen")
-            return mock_map[cmd]
-        return original_popen(args, **kwargs)  # Real for errorformat
-
     with (
-        patch("subprocess.Popen", side_effect=capture_and_mock),
+        patch_popen_selective(sequence, mock_map) as popen_mock,
         patch_monitor_thread(),
     ):
         result = runner.invoke(app, ["--verbose", "--", "make"])
 
-    # Verify TUICK_VERBOSE=1 passed to children
-    assert captured_env.get("TUICK_VERBOSE") == "1"
+    # Verify TUICK_VERBOSE=1 passed to make via env kwargs
+    for call in popen_mock.mock_calls:
+        args = call[1]
+        if args and args[0] and args[0][0] == "make":
+            env = call[2].get("env", {})
+            assert env.get("TUICK_VERBOSE") == "1"
+            break
+
     # Verify verbose output shows the command
     output = strip_ansi(result.stderr)
     assert "$ make" in output

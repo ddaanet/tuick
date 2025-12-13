@@ -234,6 +234,7 @@ One-way doors (schemas, APIs, deletions, architecture) need 10× thought. Design
 - **DO NOT** advertise AI assistance in commit messages ("Generated with",
   etc.)
 - Keep commit messages professional and focused on the changes
+- Describe actual changes made, not original task descriptions.
 - Use [gitmojis] as unicode. Common ones:
   - ✨ introduce new features
   - 🐛 fix a bug
