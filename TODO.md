@@ -1,8 +1,5 @@
 # Tuick Task List
 
-- BUG[low]: Ignore TUICK_VERBOSE in top-level tuick to prevent double
-  initialization if environment variable is pre-set (from commit e7db255 TODO).
-
 - BUG[low]: Review _parse_top_mode change from content.strip() to content -
   whitespace-only blocks now processed differently. File: src/tuick/cli.py:671
 

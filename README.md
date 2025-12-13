@@ -186,11 +186,20 @@ updates `CLI_THEME` and other environment variables based on terminal probing.
 
 This should probably be a project of its own.
 
-## Initial preview visibility
+## User Configuration Environment Variables
+
+### Initial preview visibility
 
 `export TUICK_PREVIEW=0` to start with preview window hidden.
 
 Press `/` or `Ctrl-/` to toggle preview visibility.
+
+### Verbose output
+
+`export TUICK_VERBOSE=1` to enable verbose output showing commands run by tuick.
+
+This is equivalent to using the `--verbose` flag. When set, verbose mode is
+inherited by nested tuick processes in build systems.
 
 ## Editor Integration
 
