@@ -52,15 +52,15 @@ _pytest-diff-opt := if full-diff == 'true' { ' --verbose' } else { ' --quiet' + 
 [private]
 _pytest-agent-opts := _pytest-opts + " -p no:icdiff" + _pytest-diff-opt
 
-# Development workflow: check, test
+# Development workflow: check, test, ARGS passed to pytest
 [group('dev')]
-dev: _fail_if_claudecode compile format
+dev *ARGS: _fail_if_claudecode compile
     #!/usr/bin/env bash -euo pipefail
     {{ _bash-defs }} {{ _check-body }}
-    safe visible $run_dev $tuickf -- pytest {{ _pytest-opts }}
+    safe visible $run_dev $tuickf -- pytest {{ _pytest-opts }} {{ ARGS }}
     end-safe
 
-# Agent workflow: check, test with minimal output
+# Agent workflow: check, test with minimal output, ARGS passed to pytest
 [group('agent')]
 agent *ARGS: agent-compile
     #!/usr/bin/env bash -euo pipefail
@@ -112,12 +112,12 @@ agent-compile:
     {{ _bash-defs }}
     quiet {{ _run-dev }} -m compileall -q {{ _python-dirs }}
 
-# Run test suite
+# Run test suite, ARGS passed to pytest
 [group('dev')]
 test *ARGS: _fail_if_claudecode
     {{ _run-dev }} tuick --format -- pytest {{ _pytest-opts }} {{ ARGS }}
 
-# Run test suite, with less output
+# Run test suite, with less output, ARGS passed to pytest
 [group('agent')]
 [no-exit-message]
 agent-test *ARGS:
@@ -138,10 +138,10 @@ check: _fail_if_claudecode compile
 
 [private]
 _check-body := '''
-    safe visible $run_dev $tuickf -- ruff format --check $python_dirs
+    safe visible $run_dev $tuickf -- ruff format --check --quiet $python_dirs
     safe visible $run_dev $tuickf -p "%E%f" -- docformatter --check $python_dirs
     safe visible $run_dev $tuickf -- ruff check --quiet $python_dirs
-    safe visible $run_dev $tuickf -f mypy -- mypy
+    safe visible $run_dev $tuickf -- mypy
 '''
 
 # Report TODO, FIXME, XXX, HACK comments
@@ -183,10 +183,6 @@ format:
     safe visible $run_dev docformatter --in-place $python_dirs
     end-safe
 
-[private]
-_format-body := '''
-'''
-
 # Create release: tag, build tarball, upload to PyPI and GitHub
 [group('dev')]
 release bump='patch': _fail_if_claudecode
@@ -195,7 +191,7 @@ release bump='patch': _fail_if_claudecode
     ERROR="{{ style('error') }}"
     GREEN=$'\033[32m'  # ansi code for green
     fail () { echo "${ERROR}$*${NORMAL}"; exit 1; }
-    git diff-index --quiet HEAD -- || fail "Error: uncommitted changes"
+    git diff --quiet HEAD || fail "Error: uncommitted changes"
     new_version=$(uv version --bump {{ bump }} --dry-run)
     while read -re -p "Release $new_version? [y/n] " answer; do
         case "$answer" in
@@ -204,12 +200,12 @@ release bump='patch': _fail_if_claudecode
             *) continue;;
         esac
     done
-    echo "Preparing release"
-    version=$(uv version --short --bump {{ bump }})
-    git add pyproject.toml
+    visible uv version --bump {{ bump }}
+    git add pyproject.toml uv.lock
     visible git commit -m "🔖 Release tuick $version"
+    visible git push
     tag="v$version"
-    visible just agent
+    visible just dev -qq
     git rev-parse "$tag" >/dev/null 2>&1 \
     && fail "Error: tag $tag already exists"
     visible git tag -a "$tag" -m "Release $version"
