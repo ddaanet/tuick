@@ -1,6 +1,6 @@
 [project]
 name = "tuick"
-version = "0.1.4"
+version = "0.1.5"
 description = "Terminal based browser for source code errors."
 readme = "README.md"
 requires-python = ">=3.14"
