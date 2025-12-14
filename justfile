@@ -1,7 +1,5 @@
 # Tuicker project commands
 
-export FORCE_COLOR := '1'
-
 # Display available recipes
 [group('user')]
 help:
@@ -191,18 +189,27 @@ _format-body := '''
 
 # Create release: tag, build tarball, upload to PyPI and GitHub
 [group('dev')]
-release: _fail_if_claudecode
+release bump='patch': _fail_if_claudecode
     #!/usr/bin/env bash -euo pipefail
     {{ _bash-defs }}
     ERROR="{{ style('error') }}"
     GREEN=$'\033[32m'  # ansi code for green
     fail () { echo "${ERROR}$*${NORMAL}"; exit 1; }
-    version=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+    git diff-index --quiet HEAD -- || fail "Error: uncommitted changes"
+    new_version=$(uv version --bump {{ bump }} --dry-run)
+    while read -re -p "Release $new_version? [y/n] " answer; do
+        case "$answer" in
+            y|Y) break;;
+            n|N) exit 1;;
+            *) continue;;
+        esac
+    done
+    echo "Preparing release"
+    version=$(uv version --short --bump {{ bump }})
+    git add pyproject.toml
+    visible git commit -m "🔖 Release tuick $version"
     tag="v$version"
-    echo "Preparing release $tag"
     visible just agent
-    git diff-index --quiet HEAD -- \
-    || fail "Error: uncommitted changes"
     git rev-parse "$tag" >/dev/null 2>&1 \
     && fail "Error: tag $tag already exists"
     visible git tag -a "$tag" -m "Release $version"
