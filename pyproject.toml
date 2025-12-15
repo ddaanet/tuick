@@ -25,7 +25,9 @@ tuick = "tuick.cli:app"
 [dependency-groups]
 dev = [
     "isort>=7.0.0",
+    "mdformat>=1.0.0",
     "mypy[mypyc]>=1.18.2",
+    "pymarkdownlnt>=0.9.33",
     "pytest>=8.4.2",
     "pytest-icdiff>=0.9",
     "ruff>=0.14.2",

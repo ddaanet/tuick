@@ -142,6 +142,7 @@ _check-body := '''
     safe visible $run_dev $tuickf -p "%E%f" -- docformatter --check $python_dirs
     safe visible $run_dev $tuickf -- ruff check --quiet $python_dirs
     safe visible $run_dev $tuickf -- mypy
+    safe visible $run_dev make -C agents check
 '''
 
 # Report TODO, FIXME, XXX, HACK comments
@@ -165,6 +166,7 @@ _agent-check-body := '''
     safe quiet $run_dev docformatter --check $python_dirs
     safe quiet $run_dev ruff check --quiet --output-format=concise $python_dirs
     safe quiet $run_dev mypy
+    safe quiet $run_dev make -C agents check
 '''
 
 # Ruff auto-fix

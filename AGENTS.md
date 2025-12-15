@@ -38,7 +38,7 @@ Use the Task tool to delegate work to faster agents when tasks are well-defined 
 ### High-Level Planner
 
 **When**: User provides a complex request requiring two-stage refinement
-**Produces**: ~100-line outline plan with phases and unknowns
+**Produces**: ~200-line outline plan with phases and unknowns
 **Stops on**: Ambiguous requirements; clarifies with user
 **Example**: "Build a feature to support X" → phase breakdown, open questions
 
@@ -101,7 +101,7 @@ The orchestrator follows this high-level workflow:
 
 2. **High-Level Plan** — Delegate to high-level-planner
    - Provide context and requirements
-   - Receive outline plan (≤100 lines) with phases and open questions
+   - Receive outline plan (≤200 lines) with phases and open questions
    - Validate understanding back to user if major ambiguities
 
 3. **Detailed Plan** — Delegate to detail-planner

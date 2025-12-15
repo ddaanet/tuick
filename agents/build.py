@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """Build agent role files by combining source fragments."""
 
+import re
 import sys
 from pathlib import Path
+
+
+def increase_header_levels(content: str) -> str:
+    """Increase markdown header levels by one.
+
+    Args:
+        content: Markdown content
+
+    Returns:
+        Content with headers increased by one level
+    """
+    return re.sub(r'^(#+) ', r'#\1 ', content, flags=re.MULTILINE)
 
 
 def build_role(output_path: Path, role_title: str, *source_files: Path) -> None:
@@ -32,7 +45,8 @@ def build_role(output_path: Path, role_title: str, *source_files: Path) -> None:
             if i > 0:
                 out.write("\n---\n\n")
 
-            # Write source content
+            # Increase header levels and write source content
+            content = increase_header_levels(content)
             out.write(content)
 
             # Ensure newline at end
