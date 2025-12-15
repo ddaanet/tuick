@@ -36,20 +36,6 @@ Surprise = model error. Stop and identify the false assumption.
 
 **"Should" trap:** "This should work but doesn't" means your model is wrong, not reality.
 
-### Epistemic Standards
-
-- "I believe X" = unverified theory
-- "I verified X" = tested, have evidence
-- "I don't know" is always valid—state it clearly
-
-One observation ≠ pattern. State exactly what was tested.
-
-### Feedback Loops
-
-**Batch size: 3 actions, then verify reality matches model.**
-
-Observable reality is the checkpoint, not thinking or writing.
-
 ### Autonomy Check
 
 Before significant decisions:
