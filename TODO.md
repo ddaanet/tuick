@@ -1,5 +1,11 @@
 # Tuick Task List
 
+- FEAT[high] tool detection support uv run
+
+  Add test for "detect_tool" that checks that if the command name is uv (ignoring leading path) and the first arg is run, then the detected tool is the second argument, then implement the change
+
+  Prompt Sonnet agent and refer to the @agents/roles/detail-planner.md to write detailed prompt for coder agent. Then apply quality-agent to fix 'just check' errors.
+
 - BUG[med] Errorformat line matching: Current implementation uses dict mapping
   from stripped lines to original ANSI lines. This fails if duplicate stripped
   lines exist. Implement proper matching algorithm that handles:
