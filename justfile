@@ -15,7 +15,7 @@ install:
 [private]
 _run-dev := 'uv run --dev'
 [private]
-_python-dirs := "src tests"
+_python-dirs := "src tests scripts"
 [private]
 _pytest-opts := "--no-header --tb=short"
 
@@ -217,3 +217,8 @@ release bump='patch': _fail_if_claudecode
     visible gh release create "$tag" --title "Release $version" \
         --generate-notes
     echo "${GREEN}Release $tag complete${NORMAL}"
+
+# Find new multi-line expressions for line-counter analysis
+[group('agent')]
+agent-new-multi:
+    uv run --dev scripts/find_multiline_exprs.py

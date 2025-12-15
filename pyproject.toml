@@ -93,7 +93,7 @@ convention = "pep257"
 profile = "black"
 
 [tool.mypy]
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 strict = true
 extra_checks = true
 error_summary = false
