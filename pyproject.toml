@@ -15,6 +15,10 @@ dependencies = [
     "typer>=0.20.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ddaanet/tuick"
+Repository = "https://github.com/ddaanet/tuick"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

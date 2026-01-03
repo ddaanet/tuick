@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just agent-test:*)",
+      "Bash(just agent-check:*)",
+      "Bash(just agent:*)",
+      "Bash(just clean:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:pkg.go.dev)",
+      "Bash(just full-diff=true agent-test:*)",
+      "Bash(just ruff-fix:*)",
+      "WebFetch(domain:www.mankier.com)",
+      "Bash(git show:*)",
+      "Bash(git apply:*)",
+      "Bash(grep:*)",
+      "Bash(markdownlint:*)",
+      "Bash(make clean:*)",
+      "Bash(make:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": [
+      "Bash(git commit:*)"
+    ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
+}

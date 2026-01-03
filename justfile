@@ -202,11 +202,11 @@ release bump='patch': _fail_if_claudecode
             *) continue;;
         esac
     done
-    visible uv version --bump {{ bump }}
+    version=$(uv version --bump {{ bump }})
     git add pyproject.toml uv.lock
-    visible git commit -m "🔖 Release tuick $version"
+    visible git commit -m "🔖 Release $version"
     visible git push
-    tag="v$version"
+    tag="v$(uv version --short)"
     visible just dev -qq
     git rev-parse "$tag" >/dev/null 2>&1 \
     && fail "Error: tag $tag already exists"
