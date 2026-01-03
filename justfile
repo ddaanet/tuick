@@ -187,27 +187,27 @@ format:
 
 # Create release: tag, build tarball, upload to PyPI and GitHub
 [group('dev')]
-release bump='patch': _fail_if_claudecode
+release bump='patch': _fail_if_claudecode dev
     #!/usr/bin/env bash -euo pipefail
     {{ _bash-defs }}
     ERROR="{{ style('error') }}"
     GREEN=$'\033[32m'  # ansi code for green
     fail () { echo "${ERROR}$*${NORMAL}"; exit 1; }
     git diff --quiet HEAD || fail "Error: uncommitted changes"
-    new_version=$(uv version --bump {{ bump }} --dry-run)
-    while read -re -p "Release $new_version? [y/n] " answer; do
+    release=$(uv version --bump {{ bump }} --dry-run)
+    while read -re -p "Release $release? [y/n] " answer; do
         case "$answer" in
             y|Y) break;;
             n|N) exit 1;;
             *) continue;;
         esac
     done
-    version=$(uv version --bump {{ bump }})
+    visible uv version --bump {{ bump }}
+    version=$(uv version)
     git add pyproject.toml uv.lock
     visible git commit -m "🔖 Release $version"
     visible git push
     tag="v$(uv version --short)"
-    visible just dev -qq
     git rev-parse "$tag" >/dev/null 2>&1 \
     && fail "Error: tag $tag already exists"
     visible git tag -a "$tag" -m "Release $version"
