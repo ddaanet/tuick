@@ -459,7 +459,7 @@ wheels = [
 
 [[package]]
 name = "tuick"
-version = "0.1.7.dev0"
+version = "0.1.8"
 source = { editable = "." }
 dependencies = [
     { name = "requests" },
